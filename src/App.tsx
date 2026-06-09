@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Wifi,
   WifiOff,
+  Lock,
 } from 'lucide-react';
 
 // Utility functions
@@ -1057,24 +1058,49 @@ interface ModuleCardProps {
   onToggle: () => void;
   children: React.ReactNode;
   color: string;
+  disabled?: boolean;
 }
 
-const ModuleCard: React.FC<ModuleCardProps> = ({ title, icon, isExpanded, onToggle, children, color }) => (
-  <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50 overflow-hidden transition-all duration-300 hover:border-gray-600/50">
-    <button onClick={onToggle} className="w-full px-6 py-5 flex items-center justify-between text-left group">
-      <div className="flex items-center space-x-4">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
-          <div style={{ color }}>{icon}</div>
+const ModuleCard: React.FC<ModuleCardProps> = ({ title, icon, isExpanded, onToggle, children, color, disabled }) => {
+  if (disabled) {
+    return (
+      <div className="bg-gray-800/20 rounded-2xl border border-gray-700/20 overflow-hidden opacity-50 pointer-events-none select-none">
+        <div className="w-full px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gray-600/30">
+              <div className="text-gray-500">{icon}</div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-500">{title}</h3>
+              <div className="flex items-center space-x-2 mt-1">
+                <Ban className="w-4 h-4 text-gray-500" />
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Modulo desactivado - En mantenimiento</span>
+              </div>
+            </div>
+          </div>
+          <Lock className="w-5 h-5 text-gray-600" />
         </div>
-        <h3 className="text-lg font-semibold text-white group-hover:text-[#00ADEE] transition-colors">{title}</h3>
       </div>
-      <div className="text-gray-400">{isExpanded ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}</div>
-    </button>
-    <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-      <div className="px-6 pb-6 pt-2 border-t border-gray-700/50">{children}</div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50 overflow-hidden transition-all duration-300 hover:border-gray-600/50">
+      <button onClick={onToggle} className="w-full px-6 py-5 flex items-center justify-between text-left group">
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
+            <div style={{ color }}>{icon}</div>
+          </div>
+          <h3 className="text-lg font-semibold text-white group-hover:text-[#00ADEE] transition-colors">{title}</h3>
+        </div>
+        <div className="text-gray-400">{isExpanded ? <ChevronUp className="w-6 h-6" /> : <ChevronDown className="w-6 h-6" />}</div>
+      </button>
+      <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className="px-6 pb-6 pt-2 border-t border-gray-700/50">{children}</div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Main App
 function App() {
@@ -1118,7 +1144,7 @@ function App() {
           <ModuleCard title="G. Ajuste por Cantidad de Días" icon={<CalendarDays className="w-6 h-6" />} isExpanded={expandedModule === 'g'} onToggle={() => toggleModule('g')} color="#00ADEE">
             <DaysAdjustmentCalculator />
           </ModuleCard>
-          <ModuleCard title="H. Validador de Ciclos, Bajas y Movimientos Posdatados" icon={<ShieldCheck className="w-6 h-6" />} isExpanded={expandedModule === 'h'} onToggle={() => toggleModule('h')} color="#00ADEE">
+          <ModuleCard title="H. Validador de Ciclos, Bajas y Movimientos Posdatados" icon={<ShieldCheck className="w-6 h-6" />} isExpanded={false} onToggle={() => {}} color="#00ADEE" disabled={true}>
             <CycleValidator />
           </ModuleCard>
 
