@@ -708,14 +708,21 @@ const DaysAdjustmentCalculator: React.FC = () => {
 };
 
 // Module H: Cycle/Disconnection/Movement Validator
+const CYCLE_EMISSION_WINDOWS: Record<number, { start: number; end: number }> = {
+  7: { start: 6, end: 8 },
+  14: { start: 13, end: 15 },
+  21: { start: 20, end: 22 },
+  28: { start: 27, end: 29 },
+};
+
 const CycleValidator: React.FC = () => {
   const [gestionDate, setGestionDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [cycle, setCycle] = useState<string>('7');
   const [tramite, setTramite] = useState<string>('baja_posdatada');
   const [invoiceStatus, setInvoiceStatus] = useState<string>('no_emitida');
   const [planAmount, setPlanAmount] = useState<string>('');
+  const [hasPacks, setHasPacks] = useState<boolean>(false);
   const [result, setResult] = useState<{
-    cycleCloseDate: Date;
     cycleCloseDateStr: string;
     disconnectionDate: string;
     mustPay: boolean;
@@ -724,6 +731,12 @@ const CycleValidator: React.FC = () => {
     creditMsg: string;
     isPrepago: boolean;
     prepagoAlerts: string[];
+    emissionScenario: 'A' | 'B' | null;
+    emissionMsg: string;
+    emissionDateStr: string;
+    ncAmountNoTax: number | null;
+    packsAlert: string;
+    fan21Warning: string;
     speech: string;
     comment: string;
   } | null>(null);
@@ -736,11 +749,41 @@ const CycleValidator: React.FC = () => {
     const cycleDay = parseInt(cycle);
     const plan = parseFloat(planAmount) || 0;
     const closeDay = getCycleCloseDay(cycleDay);
+    const emissionWindow = CYCLE_EMISSION_WINDOWS[cycleDay];
 
     // Calculate cycle close date
     const closeDate = new Date(today.getFullYear(), today.getMonth(), closeDay);
     if (currentDay > closeDay) {
       closeDate.setMonth(closeDate.getMonth() + 1);
+    }
+
+    // Emission window dates for current month
+    const emissionStart = new Date(today.getFullYear(), today.getMonth(), emissionWindow.start);
+    const emissionEnd = new Date(today.getFullYear(), today.getMonth(), emissionWindow.end);
+
+    // Determine emission scenario
+    let emissionScenario: 'A' | 'B' | null = null;
+    let emissionMsg = '';
+    let emissionDateStr = '';
+    let ncAmountNoTax: number | null = null;
+
+    if (tramite !== 'baja_inmediata') {
+      const daysBeforeEmission = Math.ceil((emissionStart.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      emissionDateStr = `${emissionWindow.start}/${emissionWindow.end}`;
+
+      if (hasPacks) {
+        emissionScenario = 'B';
+        emissionMsg = `Posee Packs adicionales: siempre se debe verificar la Factura de Cierre. Los cargos de servicios adicionales (Fútbol/HBO/Etc) se cobran a posterior aunque el abono base se frene.`;
+      } else if (daysBeforeEmission >= 3) {
+        emissionScenario = 'A';
+        emissionMsg = `Gestión a término. El sistema NO emitirá la factura del próximo mes. No requiere ajuste manual.`;
+      } else {
+        emissionScenario = 'B';
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const daysToAdjust = Math.max(0, Math.ceil((closeDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+        ncAmountNoTax = ((plan / daysInMonth) * daysToAdjust) / 1.21;
+        emissionMsg = `Factura ya emitida o en proceso. Se debe abonar el comprobante vigente y cargar una NC por ${formatCurrency(ncAmountNoTax)} S/IVA para compensar el período no utilizado.`;
+      }
     }
 
     // Disconnection date
@@ -781,10 +824,27 @@ const CycleValidator: React.FC = () => {
       prepagoAlerts.push('Alternativa: Abono Control - no genera deuda acumulativa y mantiene los beneficios del abono.');
     }
 
+    // Packs alert
+    let packsAlert = '';
+    if (hasPacks) {
+      packsAlert = 'Posee Packs adicionales. Verificar Factura de Cierre: los cargos de servicios adicionales se cobran a posterior aunque el abono base se frene.';
+    }
+
+    // FAN 21-day warning
+    let fan21Warning = '';
+    const altaDate = new Date(today);
+    altaDate.setDate(altaDate.getDate() - 21);
+    fan21Warning = 'Recordar: FAN valida que hayan pasado al menos 21 días desde el alta para ciertos movimientos. Verificar fecha de alta del cliente.';
+
     // Speech
     let speech = '';
     if (tramite === 'baja_inmediata') {
       speech = `«Se procesa la baja inmediata de la línea. La desconexión se realiza en este momento. ${mustPay ? `La factura pendiente de ${formatCurrency(plan)} debe abonarse para evitar mora en el DNI.` : ''}»`;
+    } else if (emissionScenario === 'A') {
+      speech = `«Quédese tranquilo que, al gestionar la baja hoy ${formatDate(today)}, su ciclo cierra el ${closeDay} y el sistema ya no le enviará la factura del mes que viene.»`;
+    } else if (emissionScenario === 'B') {
+      const emissionDay = emissionWindow.start;
+      speech = `«Como su factura ya se emitió el día ${emissionDay}, usted deberá abonarla y yo le cargaré ahora mismo un ajuste de ${ncAmountNoTax ? formatCurrency(ncAmountNoTax) : formatCurrency(creditAmount || 0)} a su favor.»`;
     } else if (tramite === 'pase_prepago') {
       speech = `«El pase a Prepago se efectiviza el ${formatDate(closeDate)}. ${mustPay ? mustPayMsg : ''} ${creditMsg ? creditMsg : ''} Tenga en cuenta que en Prepago no tiene WhatsApp gratis sin datos, y el costo por GB es más alto. Si lo que le preocupa es la deuda, le recomiendo Abono Control que no genera deuda acumulativa.»`;
     } else if (tramite === 'unificacion') {
@@ -793,10 +853,9 @@ const CycleValidator: React.FC = () => {
       speech = `«La baja posdatada se efectiviza el ${formatDate(closeDate)}. ${mustPay ? mustPayMsg : ''} ${creditMsg ? creditMsg : ''} El cliente deja de tener abono ese día.»`;
     }
 
-    const comment = `Validación Ciclo ${cycleDay}. Trámite: ${tramite}. Cierre: ${formatDate(closeDate)}. Desconexión: ${disconnectionDate}. Factura: ${invoiceStatus}. ${mustPay ? 'DEBE ABONAR.' : ''} ${creditAmount ? `NCL ${formatCurrency(creditAmount)} S/IVA.` : ''} ${isPrepago ? 'ALERTA PREPAGO.' : ''}`;
+    const comment = `Validación Ciclo ${cycleDay}. Trámite: ${tramite}. Cierre: ${formatDate(closeDate)}. Desconexión: ${disconnectionDate}. Factura: ${invoiceStatus}. ${emissionScenario ? `Emisión: Escenario ${emissionScenario} (ventana ${emissionDateStr}).` : ''} ${mustPay ? 'DEBE ABONAR.' : ''} ${ncAmountNoTax ? `NC ${formatCurrency(ncAmountNoTax)} S/IVA.` : ''} ${creditAmount ? `NCL ${formatCurrency(creditAmount)} S/IVA.` : ''} ${hasPacks ? 'PACKS: Verificar Factura Cierre.' : ''} ${isPrepago ? 'ALERTA PREPAGO.' : ''}`;
 
     setResult({
-      cycleCloseDate: closeDate,
       cycleCloseDateStr: formatDate(closeDate),
       disconnectionDate,
       mustPay,
@@ -805,6 +864,12 @@ const CycleValidator: React.FC = () => {
       creditMsg,
       isPrepago,
       prepagoAlerts,
+      emissionScenario,
+      emissionMsg,
+      emissionDateStr,
+      ncAmountNoTax,
+      packsAlert,
+      fan21Warning,
       speech,
       comment,
     });
@@ -812,6 +877,17 @@ const CycleValidator: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Emission windows reference table */}
+      <div className="p-4 bg-gray-700/30 rounded-xl">
+        <p className="text-sm font-medium text-gray-300 mb-2">Ventanas de Emisión por Ciclo</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div className="bg-gray-600/30 rounded-lg p-2 text-center"><span className="text-gray-400">Ciclo 7:</span><br /><span className="text-white font-medium">Días 6-8</span></div>
+          <div className="bg-gray-600/30 rounded-lg p-2 text-center"><span className="text-gray-400">Ciclo 14:</span><br /><span className="text-white font-medium">Días 13-15</span></div>
+          <div className="bg-gray-600/30 rounded-lg p-2 text-center"><span className="text-gray-400">Ciclo 21:</span><br /><span className="text-white font-medium">Días 20-22</span></div>
+          <div className="bg-gray-600/30 rounded-lg p-2 text-center"><span className="text-gray-400">Ciclo 28:</span><br /><span className="text-white font-medium">Días 27-29</span></div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">Fecha de Gestión</label>
@@ -842,13 +918,18 @@ const CycleValidator: React.FC = () => {
             <option value="no_emitida">No emitida</option><option value="emitida_pendiente">Emitida y Pendiente</option><option value="emitida_abonada">Emitida y Abonada</option>
           </select>
         </div>
-        <div className="md:col-span-2">
+        <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">Monto del Plan Actual</label>
           <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input type="number" value={planAmount} onChange={(e) => setPlanAmount(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all" placeholder="0.00" />
           </div>
+        </div>
+        <div className="flex items-center space-x-3 py-7">
+          <input type="checkbox" id="hasPacks" checked={hasPacks} onChange={(e) => setHasPacks(e.target.checked)}
+            className="w-5 h-5 rounded border-gray-600 bg-gray-700/50 text-[#00ADEE] focus:ring-[#00ADEE] cursor-pointer" />
+          <label htmlFor="hasPacks" className="text-sm text-gray-300 cursor-pointer">Posee Packs (Fútbol / HBO / Etc)</label>
         </div>
       </div>
 
@@ -869,7 +950,40 @@ const CycleValidator: React.FC = () => {
               <span className="text-gray-400">Fecha de Desconexión:</span>
               <span className={`text-lg font-bold ${tramite === 'baja_inmediata' ? 'text-red-400' : 'text-white'}`}>{result.disconnectionDate}</span>
             </div>
+            {result.emissionScenario && (
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Ventana de Emisión:</span>
+                <span className="text-white font-medium">Días {result.emissionDateStr}</span>
+              </div>
+            )}
           </div>
+
+          {/* Emission rule result */}
+          {result.emissionScenario && (
+            <div className={`flex items-start space-x-3 p-4 rounded-xl ${result.emissionScenario === 'A' ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+              {result.emissionScenario === 'A'
+                ? <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                : <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              }
+              <div>
+                <p className={`text-sm font-medium mb-1 ${result.emissionScenario === 'A' ? 'text-green-300' : 'text-amber-300'}`}>
+                  Escenario {result.emissionScenario}: {result.emissionScenario === 'A' ? 'Prevención' : 'Ajuste Necesario'}
+                </p>
+                <p className={`text-sm ${result.emissionScenario === 'A' ? 'text-green-200' : 'text-amber-200'}`}>{result.emissionMsg}</p>
+              </div>
+            </div>
+          )}
+
+          {/* NC amount if scenario B */}
+          {result.ncAmountNoTax !== null && (
+            <div className="bg-gray-700/30 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-medium text-gray-300">Cálculo de NC (Escenario B)</p>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-400">Monto NC S/IVA (para FAN):</span>
+                <span className="text-xl text-[#00C9B7] font-bold">{formatCurrency(result.ncAmountNoTax)}</span>
+              </div>
+            </div>
+          )}
 
           {/* Payment obligation */}
           {result.mustPay && (
@@ -884,6 +998,14 @@ const CycleValidator: React.FC = () => {
             <div className="flex items-start space-x-3 p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
               <DollarSign className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-green-200">{result.creditMsg}</p>
+            </div>
+          )}
+
+          {/* Packs alert */}
+          {result.packsAlert && (
+            <div className="flex items-start space-x-3 p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+              <Info className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-purple-200">{result.packsAlert}</p>
             </div>
           )}
 
@@ -908,6 +1030,14 @@ const CycleValidator: React.FC = () => {
             <div className="flex items-start space-x-3 p-3 bg-[#00ADEE]/10 border border-[#00ADEE]/30 rounded-xl">
               <Info className="w-5 h-5 text-[#00ADEE] flex-shrink-0 mt-0.5" />
               <p className="text-sm text-[#00ADEE]">En movimientos de unificación, el ciclo destino se adopta automáticamente si la cuenta ya existe, o se asigna el más próximo si es nueva.</p>
+            </div>
+          )}
+
+          {/* FAN 21-day warning */}
+          {tramite !== 'baja_inmediata' && (
+            <div className="flex items-start space-x-3 p-3 bg-gray-600/20 border border-gray-600/40 rounded-xl">
+              <Clock className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-gray-400">{result.fan21Warning}</p>
             </div>
           )}
 
