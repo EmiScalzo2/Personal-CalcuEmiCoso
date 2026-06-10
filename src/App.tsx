@@ -26,6 +26,16 @@ import {
   Wifi,
   WifiOff,
   Lock,
+  Tv,
+  Globe,
+  Gift,
+  Star,
+  Zap,
+  Home,
+  PhoneCall,
+  Package,
+  Layers,
+  BadgeCheck,
 } from 'lucide-react';
 
 // Utility functions
@@ -571,26 +581,73 @@ const PersonalPaySimulator: React.FC = () => {
   );
 };
 
+// Argentine public holidays 2024-2026 (YYYY-MM-DD)
+const AR_HOLIDAYS = new Set([
+  '2024-01-01','2024-02-12','2024-02-13','2024-03-24','2024-03-29','2024-04-02',
+  '2024-05-01','2024-05-25','2024-06-17','2024-07-09','2024-08-17','2024-10-12',
+  '2024-11-18','2024-12-08','2024-12-25',
+  '2025-01-01','2025-03-03','2025-03-04','2025-03-24','2025-04-18','2025-04-02',
+  '2025-05-01','2025-05-25','2025-06-20','2025-07-09','2025-08-17','2025-10-12',
+  '2025-11-17','2025-12-08','2025-12-25',
+  '2026-01-01','2026-02-16','2026-02-17','2026-03-24','2026-04-03','2026-04-02',
+  '2026-05-01','2026-05-25','2026-06-15','2026-07-09','2026-08-17','2026-10-12',
+  '2026-11-23','2026-12-08','2026-12-25',
+]);
+
+const isWorkingDay = (date: Date): boolean => {
+  const dow = date.getDay();
+  if (dow === 0 || dow === 6) return false;
+  const key = date.toISOString().split('T')[0];
+  return !AR_HOLIDAYS.has(key);
+};
+
+const addWorkingDays = (startDate: Date, days: number): Date => {
+  const result = new Date(startDate);
+  let added = 0;
+  while (added < days) {
+    result.setDate(result.getDate() + 1);
+    if (isWorkingDay(result)) added++;
+  }
+  return result;
+};
+
 // Module F: Logistics Verifier
 const LogisticsVerifier: React.FC = () => {
   const [postalCode, setPostalCode] = useState<string>('');
-  const [saleDate, setSaleDate] = useState<string>('');
+  const [saleDate, setSaleDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [result, setResult] = useState<{
-    estimatedDays: string; zone: string; portabilityWindow: string; comment: string;
+    estimatedDays: string;
+    zone: string;
+    portabilityDate: string;
+    chipDate: string;
+    workingDaysUsed: number;
+    comment: string;
   } | null>(null);
 
   const calculate = () => {
-    const cp = postalCode.toString();
+    const cpNum = parseInt(postalCode) || 0;
     const saleDateVal = saleDate ? new Date(saleDate) : new Date();
-    let zone = ''; let estimatedDays = '';
-    if (cp.startsWith('1') && cp.length === 4) { zone = 'CABA'; estimatedDays = '48 horas'; }
-    else if (cp.startsWith('16') || cp.startsWith('17') || cp.startsWith('18') || cp.startsWith('19') || cp.startsWith('B') || cp.startsWith('b')) { zone = 'GBA'; estimatedDays = '2-3 días'; }
-    else { zone = 'Resto del País'; estimatedDays = '4 días'; }
-    const minPortDate = new Date(saleDateVal); minPortDate.setDate(minPortDate.getDate() + 7);
-    const maxPortDate = new Date(saleDateVal); maxPortDate.setDate(maxPortDate.getDate() + 10);
-    const portWindow = `${formatDate(minPortDate)} - ${formatDate(maxPortDate)}`;
-    const comment = `Logística CP ${cp}. Zona: ${zone}. Entrega: ${estimatedDays}. Venta: ${formatDate(saleDateVal)}. Ventana Portabilidad: ${portWindow}.`;
-    setResult({ estimatedDays, zone, portabilityWindow: portWindow, comment });
+    let zone = '';
+    let estimatedDays = '';
+    let workingDaysUsed = 0;
+
+    if (cpNum < 1900) {
+      zone = cpNum >= 1000 && cpNum <= 1499 ? 'CABA' : 'GBA / Zona < 1900';
+      estimatedDays = '48 a 72 horas';
+      workingDaysUsed = 6;
+    } else {
+      zone = 'Interior / CP ≥ 1900';
+      estimatedDays = '4 a 5 días hábiles';
+      workingDaysUsed = 10;
+    }
+
+    const portDate = addWorkingDays(saleDateVal, workingDaysUsed);
+    // chip arrives before portDate: 5 working days from sale
+    const chipDate = addWorkingDays(saleDateVal, 5);
+
+    const comment = `Logística CP ${postalCode}. Zona: ${zone}. Entrega: ${estimatedDays}. Gestión: ${formatDate(saleDateVal)}. Chip llega: ${formatDate(chipDate)} (5 días hábiles). Fecha de Portación: ${formatDate(portDate)} (${workingDaysUsed} días hábiles). Al finalizar el tilde verde: foto DNI frente y dorso al WhatsApp 11 7195-0001 opción PORTABILIDAD.`;
+
+    setResult({ estimatedDays, zone, portabilityDate: formatDate(portDate), chipDate: formatDate(chipDate), workingDaysUsed, comment });
   };
 
   return (
@@ -601,11 +658,11 @@ const LogisticsVerifier: React.FC = () => {
           <div className="relative">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input type="text" value={postalCode} onChange={(e) => setPostalCode(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all" placeholder="Ej: 1425" />
+              className="w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all" placeholder="Ej: 1425 o 3000" />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">Fecha de Venta</label>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Fecha del Llamado (Gestión)</label>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)}
@@ -613,24 +670,47 @@ const LogisticsVerifier: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="p-3 bg-gray-700/30 rounded-xl">
+          <p className="text-gray-400 mb-1">CP menor a 1900</p>
+          <p className="text-white font-medium">Portación: 6 días hábiles</p>
+          <p className="text-gray-400">Chip: 5 días hábiles</p>
+        </div>
+        <div className="p-3 bg-gray-700/30 rounded-xl">
+          <p className="text-gray-400 mb-1">CP igual o mayor a 1900</p>
+          <p className="text-white font-medium">Portación: 10 días hábiles</p>
+          <p className="text-gray-400">Chip: 5 días hábiles</p>
+        </div>
+      </div>
+
       <button onClick={calculate}
         className="w-full py-3 bg-gradient-to-r from-[#00ADEE] to-[#0095D0] text-white font-semibold rounded-xl hover:from-[#0095D0] hover:to-[#00ADEE] transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg">
-        Verificar Logística
+        Calcular Fechas
       </button>
 
       {result && (
         <div className="mt-6 space-y-4">
           <div className="bg-gray-700/30 rounded-xl p-5 space-y-3">
             <div className="flex justify-between items-center"><span className="text-gray-400">Zona:</span><span className="text-white font-medium">{result.zone}</span></div>
-            <div className="flex justify-between items-center"><span className="text-gray-400">Tiempo de Entrega:</span><span className="text-lg text-[#00ADEE] font-bold">{result.estimatedDays}</span></div>
+            <div className="flex justify-between items-center"><span className="text-gray-400">Entrega del Chip:</span><span className="text-[#00ADEE] font-bold">{result.chipDate}</span></div>
+            <div className="flex justify-between items-center"><span className="text-gray-400">Días hábiles portación:</span><span className="text-white font-medium">{result.workingDaysUsed} días</span></div>
             <div className="border-t border-gray-600 pt-3">
-              <div className="flex items-center space-x-2 mb-2"><Clock className="w-4 h-4 text-[#00C9B7]" /><span className="text-gray-300 font-medium">Ventana de Portabilidad:</span></div>
-              <p className="text-center text-xl text-[#00C9B7] font-bold">{result.portabilityWindow}</p>
-              <p className="text-center text-sm text-gray-400 mt-1">(7 a 10 días desde la venta)</p>
+              <div className="flex items-center space-x-2 mb-2"><Clock className="w-4 h-4 text-[#00C9B7]" /><span className="text-gray-300 font-medium">Fecha de Portación a Personal:</span></div>
+              <p className="text-center text-2xl text-[#00C9B7] font-bold">{result.portabilityDate}</p>
             </div>
           </div>
+
+          <div className="flex items-start space-x-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-200">
+              <p className="font-medium mb-1">Al finalizar el tramite (tilde verde):</p>
+              <p>Indicarle al cliente que envie foto del <strong>FRENTE Y DORSO DE SU DNI</strong> via WhatsApp al <strong>11 7195-0001</strong> — Opcion <strong>PORTABILIDAD</strong> del menu.</p>
+            </div>
+          </div>
+
           <SpeechTip>
-            <p>«Tu pedido llega en {result.estimatedDays}. La portabilidad se concreta entre el {result.portabilityWindow}.»</p>
+            <p>«Su chip llega el {result.chipDate} aproximadamente (5 días hábiles). Una vez que tengamos el tilde verde, la línea se activa en Personal el {result.portabilityDate}. Al finalizar el trámite, por favor mándenos una foto del frente y dorso de su DNI al WhatsApp 11 7195-0001, opción Portabilidad del menú.»</p>
           </SpeechTip>
           <CrmBlock comment={result.comment} />
         </div>
@@ -1050,6 +1130,312 @@ const CycleValidator: React.FC = () => {
   );
 };
 
+// ─────────────────────────────────────────────
+// BENEFICIOS TAB
+// ─────────────────────────────────────────────
+
+interface BenefitCardProps {
+  icon: React.ReactNode;
+  title: string;
+  color: string;
+  convergent?: boolean;
+  children: React.ReactNode;
+}
+
+const BenefitCard: React.FC<BenefitCardProps> = ({ icon, title, color, convergent, children }) => (
+  <div className={`rounded-2xl border p-5 space-y-3 ${convergent ? 'border-[#00C9B7]/40 bg-[#00C9B7]/5' : 'border-gray-700/50 bg-gray-800/50'}`}>
+    <div className="flex items-center space-x-3">
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}25` }}>
+        <div style={{ color }}>{icon}</div>
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center space-x-2">
+          <h4 className="font-semibold text-white text-sm">{title}</h4>
+          {convergent && <span className="text-xs px-2 py-0.5 bg-[#00C9B7]/20 text-[#00C9B7] rounded-full font-medium">Convergente</span>}
+        </div>
+      </div>
+    </div>
+    <div className="text-sm text-gray-300 space-y-1.5">{children}</div>
+  </div>
+);
+
+const BulletItem: React.FC<{ icon?: React.ReactNode; text: string; warn?: boolean; good?: boolean }> = ({ icon, text, warn, good }) => (
+  <div className={`flex items-start space-x-2 ${warn ? 'text-amber-300' : good ? 'text-green-300' : 'text-gray-300'}`}>
+    <span className="flex-shrink-0 mt-0.5">{icon || <span className={`inline-block w-1.5 h-1.5 rounded-full mt-1.5 ${warn ? 'bg-amber-400' : good ? 'bg-green-400' : 'bg-gray-500'}`} />}</span>
+    <span className="text-sm">{text}</span>
+  </div>
+);
+
+const BeneficiosTab: React.FC = () => {
+  const [hogar, setHogar] = useState<string>('ninguno');
+  const [lineas, setLineas] = useState<string>('ninguna');
+  const [plan, setPlan] = useState<string>('prepago');
+  const [unificada, setUnificada] = useState<string>('no');
+
+  const isTV = hogar !== 'ninguno' && hogar !== 'solo_internet';
+  const isFlowClasico = hogar === 'flow_clasico';
+  const isFlowFlex = hogar === 'flow_flex';
+  const isFlowFull = hogar === 'flow_full_deco' || hogar === 'flow_full_app';
+  const isHogar = hogar !== 'ninguno';
+  const hasLines = lineas !== 'ninguna';
+  const isPrepago = plan === 'prepago';
+  const isAbono = plan.startsWith('control') || plan.startsWith('fijo') || plan.startsWith('black');
+  const isControl = plan.startsWith('control');
+  const isFijo = plan.startsWith('fijo');
+  const isBlack = plan.startsWith('black');
+  const isAbonoFijoOrBlack = isFijo || isBlack;
+  const hasUnificada = unificada === 'si';
+  const gb = plan.split('_')[1] ? parseInt(plan.split('_')[1]) : 0;
+
+  const roamingInfo = () => {
+    if (!isAbonoFijoOrBlack) return null;
+    if (gb === 4) return { gb: 2, region: 'países limítrofes (Uruguay, Paraguay, Chile) y EEUU' };
+    if (gb === 8) return { gb: 3, region: 'todo el continente americano' };
+    if (gb === 15) return { gb: 5, region: 'todo el continente americano' };
+    if (gb === 30) return { gb: 8, region: 'América y Europa' };
+    if (gb === 50) return { gb: 8, region: 'América, Europa y Resto del Mundo' };
+    return null;
+  };
+
+  const creditoControl = () => {
+    if (gb === 3) return '$2.000';
+    if (gb === 5) return '$3.000';
+    if (gb === 10) return '$4.000';
+    return null;
+  };
+
+  const descuentoConexionTotal = () => {
+    if (!hasUnificada) return null;
+    const lineCount = lineas === '1' ? 1 : lineas === '2' ? 2 : lineas === '3' ? 3 : lineas === '4mas' ? 4 : 0;
+    if (lineCount === 0 || !isHogar) return null;
+    const base = lineCount === 1 ? 4000 : lineCount === 2 ? 7000 : lineCount === 3 ? 10000 : 12000;
+    return base;
+  };
+
+  const roaming = roamingInfo();
+  const descuento = descuentoConexionTotal();
+  const hasAnyBenefit = isTV || hasLines || hasUnificada;
+
+  return (
+    <div className="space-y-6">
+      {/* Selectors */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Home className="inline w-4 h-4 mr-1" />Servicio Hogar
+          </label>
+          <select value={hogar} onChange={(e) => setHogar(e.target.value)}
+            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
+            <option value="ninguno">Ninguno</option>
+            <option value="solo_internet">Solo Internet</option>
+            <option value="flow_clasico">Flow Clásico</option>
+            <option value="flow_flex">Flow Básico / Flex</option>
+            <option value="flow_full_deco">Flow Full (con Deco)</option>
+            <option value="flow_full_app">Flow Full (App)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Smartphone className="inline w-4 h-4 mr-1" />Líneas Móviles
+          </label>
+          <select value={lineas} onChange={(e) => setLineas(e.target.value)}
+            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
+            <option value="ninguna">Ninguna</option>
+            <option value="1">1 línea</option>
+            <option value="2">2 líneas</option>
+            <option value="3">3 líneas</option>
+            <option value="4mas">4 o más</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Package className="inline w-4 h-4 mr-1" />Tipo de Plan
+          </label>
+          <select value={plan} onChange={(e) => setPlan(e.target.value)}
+            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
+            <option value="prepago">Prepago</option>
+            <optgroup label="Abono Control">
+              <option value="control_3">Abono Control 3 GB</option>
+              <option value="control_5">Abono Control 5 GB</option>
+              <option value="control_10">Abono Control 10 GB</option>
+            </optgroup>
+            <optgroup label="Abono Fijo">
+              <option value="fijo_4">Abono Fijo 4 GB</option>
+              <option value="fijo_8">Abono Fijo 8 GB</option>
+              <option value="fijo_15">Abono Fijo 15 GB</option>
+            </optgroup>
+            <optgroup label="Plan Black">
+              <option value="black_30">Plan Black 30 GB</option>
+              <option value="black_50">Plan Black 50 GB</option>
+            </optgroup>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            <Layers className="inline w-4 h-4 mr-1" />¿Factura Unificada?
+          </label>
+          <div className="flex gap-3">
+            {['si', 'no'].map((v) => (
+              <button key={v} onClick={() => setUnificada(v)}
+                className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all ${unificada === v ? 'bg-[#00ADEE] text-white shadow-lg' : 'bg-gray-700/50 border border-gray-600 text-gray-300 hover:border-gray-500'}`}>
+                {v === 'si' ? 'Sí' : 'No'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {!hasAnyBenefit && !isPrepago && !isAbono && (
+        <div className="text-center text-gray-500 py-12">
+          <Star className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>Seleccioná al menos un producto para ver los beneficios</p>
+        </div>
+      )}
+
+      {/* Individual Benefits */}
+      {(isTV || hasLines || isPrepago || isAbono) && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Beneficios Individuales</h3>
+
+          {/* TV Benefits */}
+          {isFlowClasico && (
+            <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Clásico" color="#6B7280">
+              <BulletItem text="Grilla de canales básicos incluida." />
+              <BulletItem warn text="NO puede contratar Packs Premium (Fútbol, HBO, etc.)." />
+              <BulletItem warn text="No permite grabación ni rebobinado en nube." />
+              <BulletItem warn text="No se puede suspender remotamente." />
+              <div className="mt-3 p-3 bg-[#00ADEE]/10 border border-[#00ADEE]/20 rounded-lg">
+                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
+                <p className="text-xs text-gray-300 italic">«Usted cuenta con nuestro servicio Clásico. Para acceder a contenidos como el Pack Fútbol o Disney+, necesitaríamos migrarlo a Flow Full.»</p>
+              </div>
+            </BenefitCard>
+          )}
+
+          {isFlowFlex && (
+            <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Básico / Flex" color="#00ADEE">
+              <BulletItem good text="100% Digital, sin cables ni decodificadores." />
+              <BulletItem good text="+150 canales HD disponibles." />
+              <BulletItem good text="Convierte cualquier Smart TV en un centro de entretenimiento." />
+              <div className="mt-3 p-3 bg-[#00ADEE]/10 border border-[#00ADEE]/20 rounded-lg">
+                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
+                <p className="text-xs text-gray-300 italic">«Con Flow Flex tiene todo el contenido en su Smart TV o celu sin cables molestos ni instalaciones complicadas.»</p>
+              </div>
+            </BenefitCard>
+          )}
+
+          {isFlowFull && (
+            <BenefitCard icon={<Tv className="w-5 h-5" />} title={hogar === 'flow_full_deco' ? 'Flow Full (con Deco)' : 'Flow Full (App)'} color="#00C9B7">
+              <BulletItem good text="Paramount+ incluido de regalo." />
+              <BulletItem good text="Pausar, grabar 24hs de contenido y retroceder la guía." />
+              <BulletItem good text="Hasta 2 pantallas simultáneas y 40 dispositivos." />
+            </BenefitCard>
+          )}
+
+          {/* Prepago lifecycle */}
+          {isPrepago && (
+            <BenefitCard icon={<PhoneCall className="w-5 h-5" />} title="Prepago — Ciclo de Vida de la Línea" color="#F59E0B">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-3 p-2 bg-green-500/10 rounded-lg">
+                  <span className="w-20 text-xs font-medium text-green-400 flex-shrink-0">0-180 días</span>
+                  <span className="text-xs text-green-300">Estado Activo — navega, llama y recibe llamadas normalmente.</span>
+                </div>
+                <div className="flex items-center space-x-3 p-2 bg-amber-500/10 rounded-lg">
+                  <span className="w-20 text-xs font-medium text-amber-400 flex-shrink-0">180-240 días</span>
+                  <span className="text-xs text-amber-300">Estado Restringido — solo recibe llamadas, no navega ni llama.</span>
+                </div>
+                <div className="flex items-center space-x-3 p-2 bg-orange-500/10 rounded-lg">
+                  <span className="w-20 text-xs font-medium text-orange-400 flex-shrink-0">240-365 días</span>
+                  <span className="text-xs text-orange-300">Estado Desactivo — solo llamadas gratuitas.</span>
+                </div>
+                <div className="flex items-center space-x-3 p-2 bg-red-500/10 rounded-lg">
+                  <span className="w-20 text-xs font-medium text-red-400 flex-shrink-0">+365 días</span>
+                  <span className="text-xs text-red-300">Baja Automática — el número se pierde definitivamente.</span>
+                </div>
+              </div>
+              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
+                <p className="text-xs text-gray-300 italic">«Recuerde que para mantener su línea activa debe realizar al menos una recarga cada 180 días; de lo contrario, el sistema dará de baja el número automáticamente al cumplirse el año.»</p>
+              </div>
+            </BenefitCard>
+          )}
+
+          {/* Abono Control */}
+          {isControl && (
+            <BenefitCard icon={<Zap className="w-5 h-5" />} title={`Abono Control ${gb} GB`} color="#00ADEE">
+              <BulletItem good text="WhatsApp gratis ilimitado (texto)." />
+              <BulletItem good text="Llamadas ilimitadas incluidas." />
+              <BulletItem good text="Noches Libres: 500 MB extra de 00:00 a 06:00 hs." />
+              {creditoControl() && <BulletItem good text={`Crédito de regalo de ${creditoControl()} para comprar packs si se queda sin gigas.`} />}
+              <BulletItem warn text="NO accede al beneficio de Duplicar Gigas (solo Abono Fijo y Black)." />
+            </BenefitCard>
+          )}
+
+          {/* Roaming */}
+          {roaming && hasLines && (
+            <BenefitCard icon={<Globe className="w-5 h-5" />} title={`Roaming Incluido — ${gb} GB`} color="#00C9B7">
+              <BulletItem good text={`${roaming.gb} GB para usar en ${roaming.region}.`} />
+              <div className="mt-3 p-3 bg-[#00C9B7]/10 border border-[#00C9B7]/20 rounded-lg">
+                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
+                <p className="text-xs text-gray-300 italic">«Su plan incluye un paquete de {roaming.gb} GB para navegar en su viaje sin pagar cargos extras.»</p>
+              </div>
+            </BenefitCard>
+          )}
+        </div>
+      )}
+
+      {/* Convergent Benefits */}
+      {hasUnificada && isHogar && hasLines && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-[#00C9B7] uppercase tracking-wider flex items-center space-x-2">
+            <BadgeCheck className="w-4 h-4" /><span>Beneficios de Convergencia</span>
+          </h3>
+
+          {/* Descuento Conexión Total */}
+          {descuento && (
+            <BenefitCard icon={<DollarSign className="w-5 h-5" />} title="Descuento Conexión Total" color="#00C9B7" convergent>
+              <div className="flex justify-between items-center p-3 bg-[#00C9B7]/10 rounded-xl">
+                <span className="text-gray-300">Descuento mensual:</span>
+                <span className="text-2xl font-bold text-[#00C9B7]">{formatCurrency(descuento)}</span>
+              </div>
+              <p className="text-xs text-gray-400">Aplica por combinar hogar + {lineas === '4mas' ? '4 o más' : lineas} línea{parseInt(lineas) > 1 || lineas === '4mas' ? 's' : ''} móvil{parseInt(lineas) > 1 || lineas === '4mas' ? 'es' : ''} con factura unificada.</p>
+            </BenefitCard>
+          )}
+
+          {/* Duplicate GB */}
+          {isAbonoFijoOrBlack && (
+            <BenefitCard icon={<Zap className="w-5 h-5" />} title={`Duplicate: ${gb * 2} GB al precio de ${gb} GB`} color="#00ADEE" convergent>
+              <BulletItem good text={`Duplica los ${gb} GB base gratis. Pagás ${gb} GB y usás ${gb * 2} GB.`} />
+              <BulletItem text="Disponible solo para Abono Fijo y Plan Black con factura unificada." />
+            </BenefitCard>
+          )}
+
+          {/* WiFi Pass */}
+          {(gb === 30 || gb === 50) && (
+            <BenefitCard icon={<Wifi className="w-5 h-5" />} title="WiFi Pass — 10 GB de Modem" color="#00ADEE" convergent>
+              <BulletItem good text="10 GB extras para compartir como modem desde el celular." />
+              <BulletItem text="Disponible solo para planes 30 GB y 50 GB." />
+            </BenefitCard>
+          )}
+
+          {/* WiFi Backup */}
+          <BenefitCard icon={<ShieldCheck className="w-5 h-5" />} title="WiFi Backup — 50 GB por 72hs" color="#00C9B7" convergent>
+            <BulletItem good text="50 GB gratis por 72 horas ante fallas técnicas del servicio hogar." />
+            <BulletItem good text="Aplica a TODOS los planes (incluso Prepago y Control)." />
+          </BenefitCard>
+        </div>
+      )}
+
+      {/* Hint if no convergence */}
+      {hasUnificada && (!isHogar || !hasLines) && (
+        <div className="flex items-start space-x-3 p-4 bg-gray-700/30 border border-gray-600/40 rounded-xl">
+          <Info className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-400">Para ver beneficios convergentes seleccioná al menos un servicio hogar y al menos una línea móvil.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Module Card Component
 interface ModuleCardProps {
   title: string;
@@ -1104,6 +1490,7 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ title, icon, isExpanded, onTogg
 
 // Main App
 function App() {
+  const [activeTab, setActiveTab] = useState<'calculadoras' | 'beneficios'>('calculadoras');
   const [expandedModule, setExpandedModule] = useState<string | null>('a');
   const toggleModule = (module: string) => setExpandedModule(expandedModule === module ? null : module);
 
@@ -1113,50 +1500,83 @@ function App() {
       <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#00ADEE]/5 via-transparent to-transparent z-0" />
       <div className="relative z-10">
         <header className="sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 z-20">
-          <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center space-x-2 md:space-x-3">
-              <Calculator className="w-6 h-6 md:w-8 md:h-8 text-[#00ADEE]" />
-              <h1 className="text-base md:text-2xl font-bold text-white">Calculadora de Gestión (Emi Version)</h1>
+          <div className="max-w-4xl mx-auto px-4 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2 md:space-x-3">
+                <Calculator className="w-6 h-6 md:w-8 md:h-8 text-[#00ADEE]" />
+                <h1 className="text-base md:text-2xl font-bold text-white">Calculadora de Gestión (Emi Version)</h1>
+              </div>
+              <span className="font-sans text-xl md:text-2xl font-bold"><span className="text-[#00C9B7]">Personal</span> <span className="text-[#00ADEE]">Flow</span></span>
             </div>
-            <span className="font-sans text-xl md:text-2xl font-bold"><span className="text-[#00C9B7]">Personal</span> <span className="text-[#00ADEE]">Flow</span></span>
+            {/* Tabs */}
+            <div className="flex space-x-1">
+              {[
+                { id: 'calculadoras', label: 'Calculadoras', icon: <Calculator className="w-4 h-4" /> },
+                { id: 'beneficios', label: 'Beneficios', icon: <Star className="w-4 h-4" /> },
+              ].map((tab) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id as 'calculadoras' | 'beneficios')}
+                  className={`flex items-center space-x-2 px-5 py-2.5 text-sm font-medium rounded-t-xl transition-all ${activeTab === tab.id ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}>
+                  {tab.icon}<span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
         <main className="max-w-4xl mx-auto px-4 py-6 md:py-8 space-y-4">
-          <ModuleCard title="A. Calculadora de Cambio de Ciclo y Proporcionales" icon={<RefreshCw className="w-6 h-6" />} isExpanded={expandedModule === 'a'} onToggle={() => toggleModule('a')} color="#00ADEE">
-            <CycleChangeCalculator />
-          </ModuleCard>
-          <ModuleCard title="B. Port Out (Retención 45/65/80%)" icon={<ArrowRightLeft className="w-6 h-6" />} isExpanded={expandedModule === 'b'} onToggle={() => toggleModule('b')} color="#00ADEE">
-            <PortOutCalculator />
-          </ModuleCard>
-          <ModuleCard title="C. Nota de Crédito por Descuento Mal Aplicado" icon={<FileText className="w-6 h-6" />} isExpanded={expandedModule === 'c'} onToggle={() => toggleModule('c')} color="#00C9B7">
-            <CreditNoteCalculator />
-          </ModuleCard>
-          <ModuleCard title="D. Reintegro de un Monto a Otro" icon={<CreditCard className="w-6 h-6" />} isExpanded={expandedModule === 'd'} onToggle={() => toggleModule('d')} color="#00ADEE">
-            <RefundCalculator />
-          </ModuleCard>
-          <ModuleCard title="E. Simulador Personal Pay (Integrado)" icon={<Smartphone className="w-6 h-6" />} isExpanded={expandedModule === 'e'} onToggle={() => toggleModule('e')} color="#00ADEE">
-            <PersonalPaySimulator />
-          </ModuleCard>
-          <ModuleCard title="F. Verificador de Logística (Por CP)" icon={<Truck className="w-6 h-6" />} isExpanded={expandedModule === 'f'} onToggle={() => toggleModule('f')} color="#00ADEE">
-            <LogisticsVerifier />
-          </ModuleCard>
-          <ModuleCard title="G. Ajuste por Cantidad de Días" icon={<CalendarDays className="w-6 h-6" />} isExpanded={expandedModule === 'g'} onToggle={() => toggleModule('g')} color="#00ADEE">
-            <DaysAdjustmentCalculator />
-          </ModuleCard>
-          <ModuleCard title="H. Validador de Ciclos, Bajas y Movimientos Posdatados" icon={<ShieldCheck className="w-6 h-6" />} isExpanded={false} onToggle={() => {}} color="#00ADEE" disabled={true}>
-            <CycleValidator />
-          </ModuleCard>
+          {activeTab === 'calculadoras' && (
+            <>
+              <ModuleCard title="A. Calculadora de Cambio de Ciclo y Proporcionales" icon={<RefreshCw className="w-6 h-6" />} isExpanded={expandedModule === 'a'} onToggle={() => toggleModule('a')} color="#00ADEE">
+                <CycleChangeCalculator />
+              </ModuleCard>
+              <ModuleCard title="B. Port Out (Retención 45/65/80%)" icon={<ArrowRightLeft className="w-6 h-6" />} isExpanded={expandedModule === 'b'} onToggle={() => toggleModule('b')} color="#00ADEE">
+                <PortOutCalculator />
+              </ModuleCard>
+              <ModuleCard title="C. Nota de Crédito por Descuento Mal Aplicado" icon={<FileText className="w-6 h-6" />} isExpanded={expandedModule === 'c'} onToggle={() => toggleModule('c')} color="#00C9B7">
+                <CreditNoteCalculator />
+              </ModuleCard>
+              <ModuleCard title="D. Reintegro de un Monto a Otro" icon={<CreditCard className="w-6 h-6" />} isExpanded={expandedModule === 'd'} onToggle={() => toggleModule('d')} color="#00ADEE">
+                <RefundCalculator />
+              </ModuleCard>
+              <ModuleCard title="E. Simulador Personal Pay (Integrado)" icon={<Smartphone className="w-6 h-6" />} isExpanded={expandedModule === 'e'} onToggle={() => toggleModule('e')} color="#00ADEE">
+                <PersonalPaySimulator />
+              </ModuleCard>
+              <ModuleCard title="F. Verificador de Logística y Portabilidad (Por CP)" icon={<Truck className="w-6 h-6" />} isExpanded={expandedModule === 'f'} onToggle={() => toggleModule('f')} color="#00ADEE">
+                <LogisticsVerifier />
+              </ModuleCard>
+              <ModuleCard title="G. Ajuste por Cantidad de Días" icon={<CalendarDays className="w-6 h-6" />} isExpanded={expandedModule === 'g'} onToggle={() => toggleModule('g')} color="#00ADEE">
+                <DaysAdjustmentCalculator />
+              </ModuleCard>
+              <ModuleCard title="H. Validador de Ciclos, Bajas y Movimientos Posdatados" icon={<ShieldCheck className="w-6 h-6" />} isExpanded={false} onToggle={() => {}} color="#00ADEE" disabled={true}>
+                <CycleValidator />
+              </ModuleCard>
 
-          <div className="mt-8 p-4 bg-gray-800/30 rounded-xl border border-[#00C9B7]/30">
-            <div className="flex items-start space-x-3">
-              <Info className="w-5 h-5 text-[#00C9B7] flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-gray-400">
-                <p className="font-medium text-[#00C9B7] mb-1">Info para Vos</p>
-                <p>Esta herramienta permite calcular rápidamente los valores necesarios para la gestión de clientes. Todos los cálculos incluyen plantillas listas para copiar al CRM.</p>
+              <div className="mt-8 p-4 bg-gray-800/30 rounded-xl border border-[#00C9B7]/30">
+                <div className="flex items-start space-x-3">
+                  <Info className="w-5 h-5 text-[#00C9B7] flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-gray-400">
+                    <p className="font-medium text-[#00C9B7] mb-1">Info para Vos</p>
+                    <p>Esta herramienta permite calcular rápidamente los valores necesarios para la gestión de clientes. Todos los cálculos incluyen plantillas listas para copiar al CRM.</p>
+                  </div>
+                </div>
               </div>
+            </>
+          )}
+
+          {activeTab === 'beneficios' && (
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-[#00ADEE]/20 flex items-center justify-center">
+                  <Star className="w-5 h-5 text-[#00ADEE]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Consultor de Beneficios</h2>
+                  <p className="text-sm text-gray-400">Seleccioná los productos del cliente para ver sus beneficios</p>
+                </div>
+              </div>
+              <BeneficiosTab />
             </div>
-          </div>
+          )}
         </main>
 
         <footer className="max-w-4xl mx-auto px-4 py-8 text-center text-gray-500 text-sm border-t border-gray-800 mt-8">
