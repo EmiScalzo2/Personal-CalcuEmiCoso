@@ -36,6 +36,8 @@ import {
   Package,
   Layers,
   BadgeCheck,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 // Utility functions
@@ -1167,269 +1169,342 @@ const BulletItem: React.FC<{ icon?: React.ReactNode; text: string; warn?: boolea
 );
 
 const BeneficiosTab: React.FC = () => {
-  const [hogar, setHogar] = useState<string>('ninguno');
-  const [lineas, setLineas] = useState<string>('ninguna');
-  const [plan, setPlan] = useState<string>('prepago');
+  const [hogarItems, setHogarItems] = useState<{ id: number; tipo: string }[]>([]);
+  const [movilItems, setMovilItems] = useState<{ id: number; lineas: string; plan: string }[]>([]);
   const [unificada, setUnificada] = useState<string>('no');
 
-  const isTV = hogar !== 'ninguno' && hogar !== 'solo_internet';
-  const isFlowClasico = hogar === 'flow_clasico';
-  const isFlowFlex = hogar === 'flow_flex';
-  const isFlowFull = hogar === 'flow_full_deco' || hogar === 'flow_full_app';
-  const isHogar = hogar !== 'ninguno';
-  const hasLines = lineas !== 'ninguna';
-  const isPrepago = plan === 'prepago';
-  const isAbono = plan.startsWith('control') || plan.startsWith('fijo') || plan.startsWith('black');
-  const isControl = plan.startsWith('control');
-  const isFijo = plan.startsWith('fijo');
-  const isBlack = plan.startsWith('black');
-  const isAbonoFijoOrBlack = isFijo || isBlack;
-  const hasUnificada = unificada === 'si';
-  const gb = plan.split('_')[1] ? parseInt(plan.split('_')[1]) : 0;
+  const addHogar = () => setHogarItems([...hogarItems, { id: Date.now(), tipo: 'ninguno' }]);
+  const removeHogar = (id: number) => setHogarItems(hogarItems.filter(h => h.id !== id));
+  const updateHogar = (id: number, tipo: string) => setHogarItems(hogarItems.map(h => h.id === id ? { ...h, tipo } : h));
 
-  const roamingInfo = () => {
-    if (!isAbonoFijoOrBlack) return null;
-    if (gb === 4) return { gb: 2, region: 'países limítrofes (Uruguay, Paraguay, Chile) y EEUU' };
+  const addMovil = () => setMovilItems([...movilItems, { id: Date.now(), lineas: '1', plan: 'prepago' }]);
+  const removeMovil = (id: number) => setMovilItems(movilItems.filter(m => m.id !== id));
+  const updateMovil = (id: number, field: 'lineas' | 'plan', value: string) => setMovilItems(movilItems.map(m => m.id === id ? { ...m, [field]: value } : m));
+
+  const hasHogar = hogarItems.some(h => h.tipo !== 'ninguno');
+  const hasMovil = movilItems.length > 0;
+
+  const HOGAR_OPTIONS = [
+    { value: 'ninguno', label: 'Ninguno' },
+    { value: 'solo_internet', label: 'Solo Internet' },
+    { value: 'flow_basico', label: 'Flow Basico' },
+    { value: 'flow_clasico', label: 'Flow Clasico' },
+    { value: 'flow_flex', label: 'Flow Flex' },
+    { value: 'flow_full_deco', label: 'Flow Full (con Deco)' },
+    { value: 'flow_full_app', label: 'Flow Full (App)' },
+  ];
+
+  const PLAN_OPTIONS = [
+    { value: 'prepago', label: 'Prepago' },
+    { value: 'control_3', label: 'Abono Control 3 GB' },
+    { value: 'control_5', label: 'Abono Control 5 GB' },
+    { value: 'control_10', label: 'Abono Control 10 GB' },
+    { value: 'fijo_4', label: 'Abono Fijo 4 GB' },
+    { value: 'fijo_8', label: 'Abono Fijo 8 GB' },
+    { value: 'fijo_15', label: 'Abono Fijo 15 GB' },
+    { value: 'black_30', label: 'Plan Black 30 GB' },
+    { value: 'black_50', label: 'Plan Black 50 GB' },
+  ];
+
+  const getPlanInfo = (plan: string) => {
+    const parts = plan.split('_');
+    const tipo = parts[0];
+    const gb = parts[1] ? parseInt(parts[1]) : 0;
+    return { tipo, gb, isPrepago: tipo === 'prepago', isControl: tipo === 'control', isFijo: tipo === 'fijo', isBlack: tipo === 'black', isFijoOrBlack: tipo === 'fijo' || tipo === 'black' };
+  };
+
+  const getRoamingInfo = (plan: string) => {
+    const { isFijoOrBlack, gb } = getPlanInfo(plan);
+    if (!isFijoOrBlack) return null;
+    if (gb === 4) return { gb: 2, region: 'paises limitrofes y EEUU' };
     if (gb === 8) return { gb: 3, region: 'todo el continente americano' };
     if (gb === 15) return { gb: 5, region: 'todo el continente americano' };
-    if (gb === 30) return { gb: 8, region: 'América y Europa' };
-    if (gb === 50) return { gb: 8, region: 'América, Europa y Resto del Mundo' };
+    if (gb === 30) return { gb: 8, region: 'America y Europa' };
+    if (gb === 50) return { gb: 8, region: 'America, Europa y Resto del Mundo' };
     return null;
   };
 
-  const creditoControl = () => {
+  const getControlCredito = (plan: string) => {
+    const { gb } = getPlanInfo(plan);
     if (gb === 3) return '$2.000';
     if (gb === 5) return '$3.000';
     if (gb === 10) return '$4.000';
     return null;
   };
 
-  const descuentoConexionTotal = () => {
-    if (!hasUnificada) return null;
-    const lineCount = lineas === '1' ? 1 : lineas === '2' ? 2 : lineas === '3' ? 3 : lineas === '4mas' ? 4 : 0;
-    if (lineCount === 0 || !isHogar) return null;
-    const base = lineCount === 1 ? 4000 : lineCount === 2 ? 7000 : lineCount === 3 ? 10000 : 12000;
-    return base;
+  const getTotalDescuento = () => {
+    if (unificada !== 'si' || !hasHogar || !hasMovil) return null;
+    const totalLineas = movilItems.reduce((acc, m) => acc + (m.lineas === '4mas' ? 4 : parseInt(m.lineas) || 1), 0);
+    if (totalLineas === 0) return null;
+    return totalLineas === 1 ? 4000 : totalLineas === 2 ? 7000 : totalLineas === 3 ? 10000 : 12000;
   };
 
-  const roaming = roamingInfo();
-  const descuento = descuentoConexionTotal();
-  const hasAnyBenefit = isTV || hasLines || hasUnificada;
+  const totalDescuento = getTotalDescuento();
+
+  const renderTVBenefits = (tipo: string) => {
+    if (tipo === 'flow_basico') {
+      return (
+        <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Basico" color="#F59E0B">
+          <BulletItem text="Canales de aire (aprox. 35): noticias locales e internacionales." />
+          <BulletItem warn text="No incluye tantas opciones de deportes o cine." />
+          <BulletItem good text="Mas economico, ideal para contenido basico." />
+        </BenefitCard>
+      );
+    }
+    if (tipo === 'flow_clasico') {
+      return (
+        <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Clasico" color="#00ADEE">
+          <BulletItem good text="Grilla amplia: mas de 80 canales." />
+          <BulletItem good text="Deportes (ESPN, TyC Sports) y entretenimiento." />
+          <BulletItem good text="Gran cantidad de senales en HD." />
+          <BulletItem good text="Acceso gratuito a la app movil Flow." />
+        </BenefitCard>
+      );
+    }
+    if (tipo === 'flow_flex') {
+      return (
+        <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Flex" color="#00C9B7">
+          <BulletItem good text="100% Digital, sin cables ni decodificadores." />
+          <BulletItem good text="Disponible en Smart TV, celular o tablet." />
+        </BenefitCard>
+      );
+    }
+    if (tipo === 'flow_full_deco' || tipo === 'flow_full_app') {
+      return (
+        <BenefitCard icon={<Tv className="w-5 h-5" />} title={tipo === 'flow_full_deco' ? 'Flow Full (con Deco)' : 'Flow Full (App)'} color="#00C9B7">
+          <BulletItem good text="Paramount+ incluido de regalo." />
+          <BulletItem good text="Pausar, grabar 24hs y retroceder la guia." />
+          <BulletItem good text="Hasta 2 pantallas simultaneas y 40 dispositivos." />
+        </BenefitCard>
+      );
+    }
+    if (tipo === 'solo_internet') {
+      return (
+        <BenefitCard icon={<Wifi className="w-5 h-5" />} title="Solo Internet" color="#6B7280">
+          <BulletItem text="Servicio de internet residencial sin TV." />
+        </BenefitCard>
+      );
+    }
+    return null;
+  };
+
+  const renderPrepagoBenefits = () => (
+    <BenefitCard icon={<PhoneCall className="w-5 h-5" />} title="Prepago - Ciclo de Vida" color="#F59E0B">
+      <div className="space-y-2">
+        <div className="flex items-center space-x-3 p-2 bg-green-500/10 rounded-lg">
+          <span className="w-20 text-xs font-medium text-green-400 flex-shrink-0">0-180 dias</span>
+          <span className="text-xs text-green-300">Activo - navega, llama y recibe.</span>
+        </div>
+        <div className="flex items-center space-x-3 p-2 bg-amber-500/10 rounded-lg">
+          <span className="w-20 text-xs font-medium text-amber-400 flex-shrink-0">180-240 dias</span>
+          <span className="text-xs text-amber-300">Restringido - solo recibe llamadas.</span>
+        </div>
+        <div className="flex items-center space-x-3 p-2 bg-orange-500/10 rounded-lg">
+          <span className="w-20 text-xs font-medium text-orange-400 flex-shrink-0">240-365 dias</span>
+          <span className="text-xs text-orange-300">Desactivo - solo llamadas gratuitas.</span>
+        </div>
+        <div className="flex items-center space-x-3 p-2 bg-red-500/10 rounded-lg">
+          <span className="w-20 text-xs font-medium text-red-400 flex-shrink-0">+365 dias</span>
+          <span className="text-xs text-red-300">Baja - se pierde el numero.</span>
+        </div>
+      </div>
+    </BenefitCard>
+  );
+
+  const renderControlBenefits = (plan: string) => {
+    const { gb } = getPlanInfo(plan);
+    const credito = getControlCredito(plan);
+    return (
+      <BenefitCard icon={<Zap className="w-5 h-5" />} title={`Abono Control ${gb} GB`} color="#00ADEE">
+        <BulletItem good text="WhatsApp gratis y llamadas ilimitadas." />
+        <BulletItem good text="Noches Libres: 500 MB extra de 00:00 a 06:00 hs." />
+        {credito && <BulletItem good text={`Credito de regalo de ${credito} para comprar packs.`} />}
+        <BulletItem good text="Control total del gasto: se corta al consumir los datos." />
+        <BulletItem good text="Sin deudas acumulativas si no paga." />
+        <BulletItem text="Flexibilidad: cargas virtuales en cualquier momento." />
+        <BulletItem warn text="NO accede a Duplicar Gigas (solo Abono Fijo y Black)." />
+        {unificada === 'si' && hasHogar && (
+          <>
+            <BulletItem good text="WiFi Backup: 50 GB por 72hs ante fallas (convergente)." />
+            <BulletItem good text="Acceso a red Personal WiFi Zone (convergente)." />
+          </>
+        )}
+      </BenefitCard>
+    );
+  };
+
+  const renderFijoBenefits = (plan: string) => {
+    const { gb, isBlack } = getPlanInfo(plan);
+    const roaming = getRoamingInfo(plan);
+    return (
+      <BenefitCard icon={<Zap className="w-5 h-5" />} title={`${isBlack ? 'Plan Black' : 'Abono Fijo'} ${gb} GB`} color="#00C9B7">
+        <BulletItem good text="WhatsApp gratis, llamadas y SMS ilimitados." />
+        {!isBlack && <BulletItem good text="Credito de $20 mensual renovable cada ciclo." />}
+        <BulletItem good text="Gigas de Regalo: 60 GB (10 GB/mes x 6 meses) en portabilidad/alta." />
+        <BulletItem good text="Video Pass: 5 GB exclusivos para Flow y YouTube." />
+        {(gb === 30 || gb === 50) && <BulletItem good text="WiFi Pass: 10 GB para usar como modem." />}
+        {(gb === 30 || gb === 50) && <BulletItem good text="Guardar Gigas: datos no consumidos se acumulan (60 dias)." />}
+        {roaming && <BulletItem good text={`Roaming: ${roaming.gb} GB en ${roaming.region}. WhatsApp gratis en viaje.`} />}
+        {unificada === 'si' && hasHogar && (
+          <BulletItem good text={`Duplicate: ${gb * 2} GB al precio de ${gb} GB (convergente).`} />
+        )}
+      </BenefitCard>
+    );
+  };
 
   return (
     <div className="space-y-6">
-      {/* Selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            <Home className="inline w-4 h-4 mr-1" />Servicio Hogar
-          </label>
-          <select value={hogar} onChange={(e) => setHogar(e.target.value)}
-            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
-            <option value="ninguno">Ninguno</option>
-            <option value="solo_internet">Solo Internet</option>
-            <option value="flow_clasico">Flow Clásico</option>
-            <option value="flow_flex">Flow Básico / Flex</option>
-            <option value="flow_full_deco">Flow Full (con Deco)</option>
-            <option value="flow_full_app">Flow Full (App)</option>
-          </select>
+      {/* Hogar Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
+            <Home className="w-4 h-4" /><span>Servicios Hogar</span>
+          </h3>
+          <button onClick={addHogar} className="flex items-center gap-2 px-4 py-2 bg-[#00ADEE]/20 hover:bg-[#00ADEE]/30 text-[#00ADEE] text-sm font-semibold rounded-lg transition-all">
+            <Plus className="w-5 h-5" /><span>Agregar</span>
+          </button>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            <Smartphone className="inline w-4 h-4 mr-1" />Líneas Móviles
-          </label>
-          <select value={lineas} onChange={(e) => setLineas(e.target.value)}
-            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
-            <option value="ninguna">Ninguna</option>
-            <option value="1">1 línea</option>
-            <option value="2">2 líneas</option>
-            <option value="3">3 líneas</option>
-            <option value="4mas">4 o más</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            <Package className="inline w-4 h-4 mr-1" />Tipo de Plan
-          </label>
-          <select value={plan} onChange={(e) => setPlan(e.target.value)}
-            className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white focus:ring-2 focus:ring-[#00ADEE] focus:border-transparent transition-all appearance-none cursor-pointer">
-            <option value="prepago">Prepago</option>
-            <optgroup label="Abono Control">
-              <option value="control_3">Abono Control 3 GB</option>
-              <option value="control_5">Abono Control 5 GB</option>
-              <option value="control_10">Abono Control 10 GB</option>
-            </optgroup>
-            <optgroup label="Abono Fijo">
-              <option value="fijo_4">Abono Fijo 4 GB</option>
-              <option value="fijo_8">Abono Fijo 8 GB</option>
-              <option value="fijo_15">Abono Fijo 15 GB</option>
-            </optgroup>
-            <optgroup label="Plan Black">
-              <option value="black_30">Plan Black 30 GB</option>
-              <option value="black_50">Plan Black 50 GB</option>
-            </optgroup>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            <Layers className="inline w-4 h-4 mr-1" />¿Factura Unificada?
-          </label>
-          <div className="flex gap-3">
-            {['si', 'no'].map((v) => (
-              <button key={v} onClick={() => setUnificada(v)}
-                className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-all ${unificada === v ? 'bg-[#00ADEE] text-white shadow-lg' : 'bg-gray-700/50 border border-gray-600 text-gray-300 hover:border-gray-500'}`}>
-                {v === 'si' ? 'Sí' : 'No'}
-              </button>
-            ))}
+        {hogarItems.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm border-2 border-dashed border-gray-600 rounded-xl">
+            Presioná + Agregar para añadir un servicio hogar
           </div>
-        </div>
+        ) : (
+          hogarItems.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+              <select value={item.tipo} onChange={(e) => updateHogar(item.id, e.target.value)}
+                className="flex-1 px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-[#00ADEE]">
+                {HOGAR_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
+              <button onClick={() => removeHogar(item.id)} className="p-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all">
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+          ))
+        )}
       </div>
 
-      {!hasAnyBenefit && !isPrepago && !isAbono && (
-        <div className="text-center text-gray-500 py-12">
-          <Star className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p>Seleccioná al menos un producto para ver los beneficios</p>
-        </div>
-      )}
-
-      {/* Individual Benefits */}
-      {(isTV || hasLines || isPrepago || isAbono) && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Beneficios Individuales</h3>
-
-          {/* TV Benefits */}
-          {isFlowClasico && (
-            <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Clásico" color="#6B7280">
-              <BulletItem text="Grilla de canales básicos incluida." />
-              <BulletItem warn text="NO puede contratar Packs Premium (Fútbol, HBO, etc.)." />
-              <BulletItem warn text="No permite grabación ni rebobinado en nube." />
-              <BulletItem warn text="No se puede suspender remotamente." />
-              <div className="mt-3 p-3 bg-[#00ADEE]/10 border border-[#00ADEE]/20 rounded-lg">
-                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
-                <p className="text-xs text-gray-300 italic">«Usted cuenta con nuestro servicio Clásico. Para acceder a contenidos como el Pack Fútbol o Disney+, necesitaríamos migrarlo a Flow Full.»</p>
-              </div>
-            </BenefitCard>
-          )}
-
-          {isFlowFlex && (
-            <BenefitCard icon={<Tv className="w-5 h-5" />} title="Flow Básico / Flex" color="#00ADEE">
-              <BulletItem good text="100% Digital, sin cables ni decodificadores." />
-              <BulletItem good text="+150 canales HD disponibles." />
-              <BulletItem good text="Convierte cualquier Smart TV en un centro de entretenimiento." />
-              <div className="mt-3 p-3 bg-[#00ADEE]/10 border border-[#00ADEE]/20 rounded-lg">
-                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
-                <p className="text-xs text-gray-300 italic">«Con Flow Flex tiene todo el contenido en su Smart TV o celu sin cables molestos ni instalaciones complicadas.»</p>
-              </div>
-            </BenefitCard>
-          )}
-
-          {isFlowFull && (
-            <BenefitCard icon={<Tv className="w-5 h-5" />} title={hogar === 'flow_full_deco' ? 'Flow Full (con Deco)' : 'Flow Full (App)'} color="#00C9B7">
-              <BulletItem good text="Paramount+ incluido de regalo." />
-              <BulletItem good text="Pausar, grabar 24hs de contenido y retroceder la guía." />
-              <BulletItem good text="Hasta 2 pantallas simultáneas y 40 dispositivos." />
-            </BenefitCard>
-          )}
-
-          {/* Prepago lifecycle */}
-          {isPrepago && (
-            <BenefitCard icon={<PhoneCall className="w-5 h-5" />} title="Prepago — Ciclo de Vida de la Línea" color="#F59E0B">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-3 p-2 bg-green-500/10 rounded-lg">
-                  <span className="w-20 text-xs font-medium text-green-400 flex-shrink-0">0-180 días</span>
-                  <span className="text-xs text-green-300">Estado Activo — navega, llama y recibe llamadas normalmente.</span>
-                </div>
-                <div className="flex items-center space-x-3 p-2 bg-amber-500/10 rounded-lg">
-                  <span className="w-20 text-xs font-medium text-amber-400 flex-shrink-0">180-240 días</span>
-                  <span className="text-xs text-amber-300">Estado Restringido — solo recibe llamadas, no navega ni llama.</span>
-                </div>
-                <div className="flex items-center space-x-3 p-2 bg-orange-500/10 rounded-lg">
-                  <span className="w-20 text-xs font-medium text-orange-400 flex-shrink-0">240-365 días</span>
-                  <span className="text-xs text-orange-300">Estado Desactivo — solo llamadas gratuitas.</span>
-                </div>
-                <div className="flex items-center space-x-3 p-2 bg-red-500/10 rounded-lg">
-                  <span className="w-20 text-xs font-medium text-red-400 flex-shrink-0">+365 días</span>
-                  <span className="text-xs text-red-300">Baja Automática — el número se pierde definitivamente.</span>
-                </div>
-              </div>
-              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
-                <p className="text-xs text-gray-300 italic">«Recuerde que para mantener su línea activa debe realizar al menos una recarga cada 180 días; de lo contrario, el sistema dará de baja el número automáticamente al cumplirse el año.»</p>
-              </div>
-            </BenefitCard>
-          )}
-
-          {/* Abono Control */}
-          {isControl && (
-            <BenefitCard icon={<Zap className="w-5 h-5" />} title={`Abono Control ${gb} GB`} color="#00ADEE">
-              <BulletItem good text="WhatsApp gratis ilimitado (texto)." />
-              <BulletItem good text="Llamadas ilimitadas incluidas." />
-              <BulletItem good text="Noches Libres: 500 MB extra de 00:00 a 06:00 hs." />
-              {creditoControl() && <BulletItem good text={`Crédito de regalo de ${creditoControl()} para comprar packs si se queda sin gigas.`} />}
-              <BulletItem warn text="NO accede al beneficio de Duplicar Gigas (solo Abono Fijo y Black)." />
-            </BenefitCard>
-          )}
-
-          {/* Roaming */}
-          {roaming && hasLines && (
-            <BenefitCard icon={<Globe className="w-5 h-5" />} title={`Roaming Incluido — ${gb} GB`} color="#00C9B7">
-              <BulletItem good text={`${roaming.gb} GB para usar en ${roaming.region}.`} />
-              <div className="mt-3 p-3 bg-[#00C9B7]/10 border border-[#00C9B7]/20 rounded-lg">
-                <p className="text-xs text-[#00C9B7] font-medium mb-1">Speech sugerido:</p>
-                <p className="text-xs text-gray-300 italic">«Su plan incluye un paquete de {roaming.gb} GB para navegar en su viaje sin pagar cargos extras.»</p>
-              </div>
-            </BenefitCard>
-          )}
-        </div>
-      )}
-
-      {/* Convergent Benefits */}
-      {hasUnificada && isHogar && hasLines && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-[#00C9B7] uppercase tracking-wider flex items-center space-x-2">
-            <BadgeCheck className="w-4 h-4" /><span>Beneficios de Convergencia</span>
+      {/* Móvil Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
+            <Smartphone className="w-4 h-4" /><span>Lineas Moviles</span>
           </h3>
-
-          {/* Descuento Conexión Total */}
-          {descuento && (
-            <BenefitCard icon={<DollarSign className="w-5 h-5" />} title="Descuento Conexión Total" color="#00C9B7" convergent>
-              <div className="flex justify-between items-center p-3 bg-[#00C9B7]/10 rounded-xl">
-                <span className="text-gray-300">Descuento mensual:</span>
-                <span className="text-2xl font-bold text-[#00C9B7]">{formatCurrency(descuento)}</span>
+          <button onClick={addMovil} className="flex items-center gap-2 px-4 py-2 bg-[#00C9B7]/20 hover:bg-[#00C9B7]/30 text-[#00C9B7] text-sm font-semibold rounded-lg transition-all">
+            <Plus className="w-5 h-5" /><span>Agregar</span>
+          </button>
+        </div>
+        {movilItems.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm border-2 border-dashed border-gray-600 rounded-xl">
+            Presioná + Agregar para añadir una línea móvil
+          </div>
+        ) : (
+          movilItems.map((item, idx) => (
+            <div key={item.id} className="p-5 bg-gray-800/50 rounded-xl border border-gray-700 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <Package className="w-4 h-4" />
+                  <span className="font-medium">Movil #{idx + 1}</span>
+                </div>
+                <button onClick={() => removeMovil(item.id)} className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-              <p className="text-xs text-gray-400">Aplica por combinar hogar + {lineas === '4mas' ? '4 o más' : lineas} línea{parseInt(lineas) > 1 || lineas === '4mas' ? 's' : ''} móvil{parseInt(lineas) > 1 || lineas === '4mas' ? 'es' : ''} con factura unificada.</p>
-            </BenefitCard>
-          )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Cantidad de lineas</label>
+                  <select value={item.lineas} onChange={(e) => updateMovil(item.id, 'lineas', e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-700/50 border border-gray-600 rounded-lg text-white text-sm">
+                    <option value="1">1 linea</option>
+                    <option value="2">2 lineas</option>
+                    <option value="3">3 lineas</option>
+                    <option value="4mas">4 o mas</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1.5">Tipo de Plan</label>
+                  <select value={item.plan} onChange={(e) => updateMovil(item.id, 'plan', e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-700/50 border border-gray-600 rounded-lg text-white text-sm">
+                    {PLAN_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
-          {/* Duplicate GB */}
-          {isAbonoFijoOrBlack && (
-            <BenefitCard icon={<Zap className="w-5 h-5" />} title={`Duplicate: ${gb * 2} GB al precio de ${gb} GB`} color="#00ADEE" convergent>
-              <BulletItem good text={`Duplica los ${gb} GB base gratis. Pagás ${gb} GB y usás ${gb * 2} GB.`} />
-              <BulletItem text="Disponible solo para Abono Fijo y Plan Black con factura unificada." />
-            </BenefitCard>
-          )}
-
-          {/* WiFi Pass */}
-          {(gb === 30 || gb === 50) && (
-            <BenefitCard icon={<Wifi className="w-5 h-5" />} title="WiFi Pass — 10 GB de Modem" color="#00ADEE" convergent>
-              <BulletItem good text="10 GB extras para compartir como modem desde el celular." />
-              <BulletItem text="Disponible solo para planes 30 GB y 50 GB." />
-            </BenefitCard>
-          )}
-
-          {/* WiFi Backup */}
-          <BenefitCard icon={<ShieldCheck className="w-5 h-5" />} title="WiFi Backup — 50 GB por 72hs" color="#00C9B7" convergent>
-            <BulletItem good text="50 GB gratis por 72 horas ante fallas técnicas del servicio hogar." />
-            <BulletItem good text="Aplica a TODOS los planes (incluso Prepago y Control)." />
-          </BenefitCard>
+      {/* Factura Unificada */}
+      {(hasHogar || hasMovil) && (
+        <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-700/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Layers className="w-5 h-5 text-[#00C9B7]" />
+              <span className="text-sm text-gray-300 font-medium">¿Factura Unificada?</span>
+            </div>
+            <div className="flex gap-3">
+              {['si', 'no'].map((v) => (
+                <button key={v} onClick={() => setUnificada(v)}
+                  className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${unificada === v ? (v === 'si' ? 'bg-[#00C9B7] text-white' : 'bg-gray-600 text-gray-300') : 'bg-gray-700/50 border border-gray-600 text-gray-400 hover:border-gray-500'}`}>
+                  {v === 'si' ? 'Si' : 'No'}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Hint if no convergence */}
-      {hasUnificada && (!isHogar || !hasLines) && (
-        <div className="flex items-start space-x-3 p-4 bg-gray-700/30 border border-gray-600/40 rounded-xl">
-          <Info className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-gray-400">Para ver beneficios convergentes seleccioná al menos un servicio hogar y al menos una línea móvil.</p>
+      {/* Benefits Section */}
+      {(hasHogar || hasMovil) && (
+        <div className="space-y-4 pt-4 border-t border-gray-700">
+          {/* TV Individual Benefits */}
+          {hogarItems.filter(h => h.tipo !== 'ninguno').map(item => (
+            <div key={`tv-${item.id}`}>{renderTVBenefits(item.tipo)}</div>
+          ))}
+
+          {/* Mobile Individual Benefits */}
+          {movilItems.map(item => {
+            const planInfo = getPlanInfo(item.plan);
+            if (planInfo.isPrepago) return <div key={`mob-${item.id}`}>{renderPrepagoBenefits()}</div>;
+            if (planInfo.isControl) return <div key={`mob-${item.id}`}>{renderControlBenefits(item.plan)}</div>;
+            if (planInfo.isFijoOrBlack) return <div key={`mob-${item.id}`}>{renderFijoBenefits(item.plan)}</div>;
+            return null;
+          })}
+
+          {/* Convergent Benefits */}
+          {unificada === 'si' && hasHogar && hasMovil && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-[#00C9B7] uppercase tracking-wider flex items-center gap-2">
+                <BadgeCheck className="w-4 h-4" /><span>Beneficios de Convergencia</span>
+              </h3>
+
+              {totalDescuento && (
+                <BenefitCard icon={<DollarSign className="w-5 h-5" />} title="Descuento Conexion Total" color="#00C9B7" convergent>
+                  <div className="flex justify-between items-center p-4 bg-[#00C9B7]/10 rounded-xl">
+                    <span className="text-gray-300 font-medium">Descuento mensual:</span>
+                    <span className="text-2xl font-bold text-[#00C9B7]">{formatCurrency(totalDescuento)}</span>
+                  </div>
+                </BenefitCard>
+              )}
+
+              <BenefitCard icon={<ShieldCheck className="w-5 h-5" />} title="WiFi Backup - 50 GB por 72hs" color="#00ADEE" convergent>
+                <BulletItem good text="50 GB gratis por 72 horas ante fallas tecnicas del hogar." />
+                <BulletItem text="Aplica a TODOS los planes (incluso Prepago y Control)." />
+              </BenefitCard>
+
+              <BenefitCard icon={<CreditCard className="w-5 h-5" />} title="Personal Pay - Nivel 4" color="#00C9B7" convergent>
+                <BulletItem good text="Acceso al Nivel 4 de Personal Pay." />
+                <BulletItem good text="Hasta 25% de reintegro en factura + 15% extra sin tope." />
+              </BenefitCard>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!hasHogar && !hasMovil && (
+        <div className="text-center text-gray-500 py-16">
+          <Star className="w-16 h-16 mx-auto mb-4 opacity-30" />
+          <p className="text-lg">Agrega servicios hogar o moviles para ver los beneficios</p>
         </div>
       )}
     </div>
