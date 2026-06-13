@@ -1172,6 +1172,8 @@ const BeneficiosTab: React.FC = () => {
   const [hogarItems, setHogarItems] = useState<{ id: number; tipo: string }[]>([]);
   const [movilItems, setMovilItems] = useState<{ id: number; lineas: string; plan: string }[]>([]);
   const [unificada, setUnificada] = useState<string>('no');
+  const [esVenta, setEsVenta] = useState<string>('no');
+  const [debitoAutomatico, setDebitoAutomatico] = useState<string>('no');
 
   const addHogar = () => setHogarItems([...hogarItems, { id: Date.now(), tipo: 'ninguno' }]);
   const removeHogar = (id: number) => setHogarItems(hogarItems.filter(h => h.id !== id));
@@ -1183,6 +1185,39 @@ const BeneficiosTab: React.FC = () => {
 
   const hasHogar = hogarItems.some(h => h.tipo !== 'ninguno');
   const hasMovil = movilItems.length > 0;
+  const hasInternet = hogarItems.some(h => h.tipo === 'solo_internet' || h.tipo === 'flow_full_deco' || h.tipo === 'flow_full_app');
+  const hasTV = hogarItems.some(h => ['flow_basico', 'flow_clasico', 'flow_flex', 'flow_full_deco', 'flow_full_app'].includes(h.tipo));
+  const hasDeco = hogarItems.some(h => h.tipo === 'flow_full_deco');
+
+  const getDADescuento = (): number | null => {
+    if (debitoAutomatico !== 'si') return null;
+    const hasCombo = hasInternet && hasTV;
+    const totalLineas = movilItems.reduce((acc, m) => acc + (m.lineas === '4mas' ? 4 : parseInt(m.lineas) || 1), 0);
+    let base = 0;
+    if (hasCombo && hasMovil) base = 6000;
+    else if (hasCombo) base = 4000;
+    else if (hasInternet && hasMovil) base = 4000;
+    else if (hasTV && hasMovil) base = 4000;
+    else if (hasInternet || hasTV) base = 2000;
+    else if (hasMovil) base = 2000;
+    const extraLines = Math.max(0, totalLineas - 1);
+    return Math.min(base + extraLines * 2000, 12000);
+  };
+
+  const getCUVInfo = (): { monto: number; descripcion: string } | null => {
+    if (esVenta === 'si') {
+      const soloHogar = hogarItems.filter(h => h.tipo !== 'ninguno');
+      if (hasDeco && soloHogar.length === 1) return { monto: 30000, descripcion: 'Alta nueva con Deco (monoproducto)' };
+      return null;
+    } else {
+      if (hasDeco && hasInternet) return { monto: 30000, descripcion: 'Cliente existente con Internet que suma Flow + Deco' };
+      if (hasDeco) return { monto: 15000, descripcion: 'Cliente existente que suma Deco' };
+      return null;
+    }
+  };
+
+  const daDescuento = getDADescuento();
+  const cuvInfo = getCUVInfo();
 
   const HOGAR_OPTIONS = [
     { value: 'ninguno', label: 'Ninguno' },
@@ -1340,7 +1375,7 @@ const BeneficiosTab: React.FC = () => {
       <BenefitCard icon={<Zap className="w-5 h-5" />} title={`${isBlack ? 'Plan Black' : 'Abono Fijo'} ${gb} GB`} color="#00C9B7">
         <BulletItem good text="WhatsApp gratis, llamadas y SMS ilimitados." />
         {!isBlack && <BulletItem good text="Credito de $20 mensual renovable cada ciclo." />}
-        <BulletItem good text="Gigas de Regalo: 60 GB (10 GB/mes x 6 meses) en portabilidad/alta." />
+        {esVenta === 'si' && <BulletItem good text="Gigas de Regalo: 60 GB (10 GB/mes x 6 meses) en alta nueva." />}
         <BulletItem good text="Video Pass: 5 GB exclusivos para Flow y YouTube." />
         {(gb === 30 || gb === 50) && <BulletItem good text="WiFi Pass: 10 GB para usar como modem." />}
         {(gb === 30 || gb === 50) && <BulletItem good text="Guardar Gigas: datos no consumidos se acumulan (60 dias)." />}
@@ -1433,29 +1468,61 @@ const BeneficiosTab: React.FC = () => {
         )}
       </div>
 
-      {/* Factura Unificada */}
+      {/* Opciones de contexto */}
       {(hasHogar || hasMovil) && (
-        <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-700/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Layers className="w-5 h-5 text-[#00C9B7]" />
-              <span className="text-sm text-gray-300 font-medium">¿Factura Unificada?</span>
+        <div className="space-y-2">
+          {[
+            { label: '¿Es venta nueva?', value: esVenta, set: setEsVenta, icon: <Gift className="w-5 h-5 text-[#00ADEE]" /> },
+            { label: '¿Factura Unificada?', value: unificada, set: setUnificada, icon: <Layers className="w-5 h-5 text-[#00C9B7]" /> },
+            { label: '¿Acepta Debito Automatico?', value: debitoAutomatico, set: setDebitoAutomatico, icon: <CreditCard className="w-5 h-5 text-[#00ADEE]" /> },
+          ].map(({ label, value, set, icon }) => (
+            <div key={label} className="p-4 bg-gray-800/30 rounded-xl border border-gray-700/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {icon}
+                  <span className="text-sm text-gray-300 font-medium">{label}</span>
+                </div>
+                <div className="flex gap-2">
+                  {['si', 'no'].map((v) => (
+                    <button key={v} onClick={() => set(v)}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${value === v ? (v === 'si' ? 'bg-[#00C9B7] text-white' : 'bg-gray-600 text-gray-300') : 'bg-gray-700/50 border border-gray-600 text-gray-400 hover:border-gray-500'}`}>
+                      {v === 'si' ? 'Si' : 'No'}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="flex gap-3">
-              {['si', 'no'].map((v) => (
-                <button key={v} onClick={() => setUnificada(v)}
-                  className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${unificada === v ? (v === 'si' ? 'bg-[#00C9B7] text-white' : 'bg-gray-600 text-gray-300') : 'bg-gray-700/50 border border-gray-600 text-gray-400 hover:border-gray-500'}`}>
-                  {v === 'si' ? 'Si' : 'No'}
-                </button>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
       {/* Benefits Section */}
       {(hasHogar || hasMovil) && (
         <div className="space-y-4 pt-4 border-t border-gray-700">
+          {/* CUV */}
+          {cuvInfo && (
+            <BenefitCard icon={<DollarSign className="w-5 h-5" />} title="CUV - Costo de Instalacion" color="#F59E0B">
+              <BulletItem warn text="Se cobra en la primera factura, no al vendedor/tecnico." />
+              <BulletItem text={cuvInfo.descripcion} />
+              <div className="flex justify-between items-center p-3 bg-amber-500/10 rounded-xl mt-2">
+                <span className="text-gray-300">Monto CUV:</span>
+                <span className="text-xl font-bold text-amber-400">{formatCurrency(cuvInfo.monto)}</span>
+              </div>
+            </BenefitCard>
+          )}
+
+          {/* DA Discount */}
+          {daDescuento !== null && daDescuento > 0 && (
+            <BenefitCard icon={<CreditCard className="w-5 h-5" />} title="Descuento Debito Automatico" color="#00ADEE">
+              <BulletItem good text="Descuento mensual por adhesion a debito automatico (6 meses)." />
+              <BulletItem text="Movil $2k | Internet $2k | Combo $4k | Internet+Movil $4k | Combo+Movil $6k." />
+              <div className="flex justify-between items-center p-3 bg-[#00ADEE]/10 rounded-xl mt-2">
+                <span className="text-gray-300">Descuento DA:</span>
+                <span className="text-xl font-bold text-[#00ADEE]">{formatCurrency(daDescuento)}</span>
+              </div>
+            </BenefitCard>
+          )}
+
           {/* TV Individual Benefits */}
           {hogarItems.filter(h => h.tipo !== 'ninguno').map(item => (
             <div key={`tv-${item.id}`}>{renderTVBenefits(item.tipo)}</div>
@@ -1479,6 +1546,7 @@ const BeneficiosTab: React.FC = () => {
 
               {totalDescuento && (
                 <BenefitCard icon={<DollarSign className="w-5 h-5" />} title="Descuento Conexion Total" color="#00C9B7" convergent>
+                  <BulletItem text="Base $4k + $2k por cada linea adicional. Tope $12k." />
                   <div className="flex justify-between items-center p-4 bg-[#00C9B7]/10 rounded-xl">
                     <span className="text-gray-300 font-medium">Descuento mensual:</span>
                     <span className="text-2xl font-bold text-[#00C9B7]">{formatCurrency(totalDescuento)}</span>
@@ -1505,6 +1573,618 @@ const BeneficiosTab: React.FC = () => {
         <div className="text-center text-gray-500 py-16">
           <Star className="w-16 h-16 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Agrega servicios hogar o moviles para ver los beneficios</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── ID Data & Parse ────────────────────────────────────────────────────────
+
+const HOGAR_IDS: string[] = [
+  'BUNDLE_INT100_FLOWFLEX','BUNDLE_INT100_FLOWFLEX_ABONO','BUNDLE_INT100_TV_CLASIC','BUNDLE_INT100_TV_CLASIC_2','BUNDLE_INT100_TV_DIGHD','BUNDLE_INT100_TV_DIGHD_2','BUNDLE_INT100_TV_FLOW_BOX','BUNDLE_INT100_TV_FLOW_BOX_2',
+  'BUNDLE_INT1000_FLOWFLEX','BUNDLE_INT1000_FLOWFLEX_ABONO','BUNDLE_INT1000_TV_CLASIC','BUNDLE_INT1000_TV_DIGHD','BUNDLE_INT1000_TV_FLOW_BOX',
+  'BUNDLE_INT25_FLOWFLEX','BUNDLE_INT25_FLOWFLEX_ABONO','BUNDLE_INT25_TV_CLASIC','BUNDLE_INT25_TV_CLASIC_2','BUNDLE_INT25_TV_DIGHD','BUNDLE_INT25_TV_DIGHD_2','BUNDLE_INT25_TV_FLOW_BOX','BUNDLE_INT25_TV_FLOW_BOX_2',
+  'BUNDLE_INT300_FLOWFLEX','BUNDLE_INT300_FLOWFLEX_ABONO','BUNDLE_INT300_TV_CLASIC','BUNDLE_INT300_TV_CLASIC_2','BUNDLE_INT300_TV_DIGHD','BUNDLE_INT300_TV_DIGHD_2','BUNDLE_INT300_TV_FLOW_BOX','BUNDLE_INT300_TV_FLOW_BOX_2',
+  'BUNDLE_INT50_FLOWFLEX','BUNDLE_INT50_FLOWFLEX_ABONO','BUNDLE_INT50_TV_CLASIC','BUNDLE_INT50_TV_DIGHD','BUNDLE_INT50_TV_FLOW_BOX',
+  'BUNDLE_TOIP_INT100','BUNDLE_TOIP_INT100_FLOWFLEX','BUNDLE_TOIP_INT100_FLOWFLEX_ABONO','BUNDLE_TOIP_INT100_TV_CLASIC','BUNDLE_TOIP_INT100_TV_CLASIC_2','BUNDLE_TOIP_INT100_TV_DIGHD','BUNDLE_TOIP_INT100_TV_DIGHD_2','BUNDLE_TOIP_INT100_TV_FLOW_BOX','BUNDLE_TOIP_INT100_TV_FLOW_BOX_2',
+  'BUNDLE_TOIP_INT1000','BUNDLE_TOIP_INT1000_FLOWFLEX','BUNDLE_TOIP_INT1000_FLOWFLEX_ABONO','BUNDLE_TOIP_INT1000_TV_CLASIC','BUNDLE_TOIP_INT1000_TV_DIGHD','BUNDLE_TOIP_INT1000_TV_FLOW_BOX',
+  'BUNDLE_TOIP_INT25','BUNDLE_TOIP_INT25_FLOWFLEX','BUNDLE_TOIP_INT25_FLOWFLEX_ABONO','BUNDLE_TOIP_INT25_TV_CLASIC','BUNDLE_TOIP_INT25_TV_CLASIC_2','BUNDLE_TOIP_INT25_TV_DIGHD','BUNDLE_TOIP_INT25_TV_DIGHD_2','BUNDLE_TOIP_INT25_TV_FLOW_BOX','BUNDLE_TOIP_INT25_TV_FLOW_BOX_2',
+  'BUNDLE_TOIP_INT300','BUNDLE_TOIP_INT300_FLOWFLEX','BUNDLE_TOIP_INT300_FLOWFLEX_ABONO','BUNDLE_TOIP_INT300_TV_CLASIC','BUNDLE_TOIP_INT300_TV_CLASIC_2','BUNDLE_TOIP_INT300_TV_DIGHD','BUNDLE_TOIP_INT300_TV_DIGHD_2','BUNDLE_TOIP_INT300_TV_FLOW_BOX','BUNDLE_TOIP_INT300_TV_FLOW_BOX_2',
+  'BUNDLE_TOIP_INT50','BUNDLE_TOIP_INT50_FLOWFLEX','BUNDLE_TOIP_INT50_FLOWFLEX_ABONO','BUNDLE_TOIP_INT50_TV_CLASIC','BUNDLE_TOIP_INT50_TV_DIGHD','BUNDLE_TOIP_INT50_TV_FLOW_BOX',
+  'BUNDLE_TOIP_INT50_FLOWSKINNY','BUNDLE_TOIP_INT50_FLOWSKINNY_DECO','BUNDLE_TOIP_INT100_FLOWSKINNY','BUNDLE_TOIP_INT100_FLOWSKINNY_DECO','BUNDLE_TOIP_INT300_FLOWSKINNY','BUNDLE_TOIP_INT300_FLOWSKINNY_DECO','BUNDLE_TOIP_INT600_FLOWSKINNY','BUNDLE_TOIP_INT600_FLOWSKINNY_DECO','BUNDLE_TOIP_INT1000_FLOWSKINNY','BUNDLE_TOIP_INT1000_FLOWSKINNY_DECO',
+  'BUNDLE_TOIP_INT50_FLOWPLUS','BUNDLE_TOIP_INT50_FLOWPLUS_DECO','BUNDLE_TOIP_INT100_FLOWPLUS','BUNDLE_TOIP_INT100_FLOWPLUS_DECO','BUNDLE_TOIP_INT300_FLOWPLUS','BUNDLE_TOIP_INT300_FLOWPLUS_DECO','BUNDLE_TOIP_INT600_FLOWPLUS','BUNDLE_TOIP_INT600_FLOWPLUS_DECO','BUNDLE_TOIP_INT1000_FLOWPLUS','BUNDLE_TOIP_INT1000_FLOWPLUS_DECO',
+  'FAN_INT_25MB','FAN_INT_50MB','FAN_INT_100MB','FAN_INT_300MB','FAN_INT_1000MB','FAN_INT_100MB_VOZ_FWA',
+  'FAN_TV_CLASICO','FAN_TV_CLASICO_MIG01','FAN_TV_CLASICO_MIG02','FAN_TV_CLASICO_MIG03','FAN_TV_CLASICO_MIG04','FAN_TV_CLASICO_MIG05','FAN_TV_CLASICO_MIG06','FAN_TV_CLASICO_TNB','FAN_TV_CLASICO_TNB_2',
+  'FAN_TV_DIGHD','FAN_TV_DIGHD_2','FAN_TV_FLOWBOX','FAN_TV_FLOWBOX_2','FAN_TV_BOCADIGHD','FAN_TV_BOCAFLOW','FAN_TV_QP_0004',
+  'FAN_TV_FLOWSKINNY','FAN_TV_FLOWSKINNY_DECO','FAN_TV_FLOWPLUS','FAN_TV_FLOWPLUS_DECO',
+  'FAN_VOLTE_TOTAL_PAIS_FULL',
+];
+
+const MOVIL_IDS: string[] = [
+  'FAN_APRO0','FAN_AFMT0','FAN_APRO2','FAN_AFON1','FAN_AFMA2','FAN_AFLIX','FAN_AFLI3','FAN_AFON4','FAN_APRO3','FAN_AFCA4',
+  'FAN_AFDT3','FAN_APRO4','FAN_AFNAC','FAN_APROC','FAN_APROT','FAN_APROQ',
+  'FAN_ADNU1','FAN_ADNU3','FAN_ADNU5','FAN_ADNU8','FAN_APRO5','FAN_ADN03','FAN_ADN05',
+  'FAN_PMAS1','FAN_PMAS2','FAN_PMAS3','FAN_PMAS4','FAN_PBAV3','FAN_PTIB5','FAN_PDNU1','FAN_PDNU2',
+  'FAN_AFRSS','FAN_AFRS3','FAN_AFRS4','FAN_AFRS5','FAN_AFRS8','FAN_APRO8',
+  'FAN_ABC01','FAN_ABC02','FAN_ABC03','FAN_ABC05','FAN_ABC10',
+  'FAN_PMON3','FAN_PMON5','FAN_PMO10','FAN_PMO30','FAN_PMO50',
+];
+
+const parseHogarID = (id: string): string => {
+  if (!id) return '';
+  const p = id.split('_');
+  if (p[0] === 'FAN') {
+    if (p[1] === 'INT') return `Solo Internet ${p[2].replace('MB', ' Mb')}${p[3] === 'VOZ' ? ' + Voz FWA' : ''}`;
+    if (p[1] === 'TV') {
+      const tvMap: Record<string, string> = { CLASICO: 'TV Clasico', DIGHD: 'TV Digital HD', FLOWBOX: 'Flow Box', BOCADIGHD: 'Boca TV DigHD', BOCAFLOW: 'Boca Flow', FLOWSKINNY: 'Flow Skinny', FLOWPLUS: 'Flow Plus' };
+      const rest = p.slice(2).join('_');
+      const isMig = rest.includes('MIG');
+      const isTNB = rest.includes('TNB');
+      const baseParts = p[2] === 'BOCADIGHD' || p[2] === 'BOCAFLOW' ? p[2] : p[2];
+      const tvLabel = tvMap[baseParts] || rest;
+      const deco = rest.endsWith('DECO') ? ' (con Deco)' : '';
+      return `Solo TV: ${tvLabel}${deco}${isMig ? ' [Migracion]' : ''}${isTNB ? ' [TNB]' : ''}`;
+    }
+    if (p[1] === 'VOLTE') return 'VoLTE Total País Full';
+    return id;
+  }
+  if (p[0] !== 'BUNDLE') return id;
+  let i = 1;
+  const parts: string[] = [];
+  if (p[i] === 'TOIP') { parts.push('Telefonia Fija'); i++; }
+  if (p[i]?.startsWith('INT')) { parts.unshift(`Internet ${p[i].replace('INT', '')} Mb`); i++; }
+  const tvMap2: Record<string, string> = { FLOWFLEX: 'Flow Flex', FLOWSKINNY: 'Flow Skinny', FLOWPLUS: 'Flow Plus' };
+  if (p[i] && tvMap2[p[i]]) { const lbl = tvMap2[p[i]]; i++; const deco = p[p.length-1]==='DECO' ? ' (con Deco)' : ''; const ab = p[p.length-1]==='ABONO' ? ' [Abono]' : ''; parts.push(lbl+deco+ab); }
+  else if (p[i] === 'TV') { i++; const tv2: Record<string, string> = { CLASIC: 'TV Clasica', DIGHD: 'TV Digital HD' }; const box = p[i]==='FLOW' && p[i+1]==='BOX'; const tLabel = box ? 'Flow Box' : (tv2[p[i]] || p[i]); const v2 = p[p.length-1]==='2' ? ' (v2)' : ''; parts.push(tLabel+v2); }
+  return parts.join(' + ') || id;
+};
+
+const parseMovilID = (id: string): string => {
+  const moMap: Record<string, string> = {
+    'FAN_PMON3':'Plan Movil 3 GB','FAN_PMON5':'Plan Movil 5 GB','FAN_PMO10':'Plan Movil 10 GB','FAN_PMO30':'Plan Movil 30 GB','FAN_PMO50':'Plan Movil 50 GB',
+    'FAN_ABC01':'ABC Movil 1 GB','FAN_ABC02':'ABC Movil 2 GB','FAN_ABC03':'ABC Movil 3 GB','FAN_ABC05':'ABC Movil 5 GB','FAN_ABC10':'ABC Movil 10 GB',
+    'FAN_PMAS1':'Plan Mas 1','FAN_PMAS2':'Plan Mas 2','FAN_PMAS3':'Plan Mas 3','FAN_PMAS4':'Plan Mas 4',
+    'FAN_ADNU1':'Plan Nuevo 1 GB','FAN_ADNU3':'Plan Nuevo 3 GB','FAN_ADNU5':'Plan Nuevo 5 GB','FAN_ADNU8':'Plan Nuevo 8 GB',
+    'FAN_ADN03':'Plan Nuevo v2 3 GB','FAN_ADN05':'Plan Nuevo v2 5 GB',
+    'FAN_PDNU1':'Plan Digital Nuevo 1','FAN_PDNU2':'Plan Digital Nuevo 2',
+    'FAN_AFRSS':'Plan Retencion S','FAN_AFRS3':'Plan Retencion 3','FAN_AFRS4':'Plan Retencion 4','FAN_AFRS5':'Plan Retencion 5','FAN_AFRS8':'Plan Retencion 8',
+    'FAN_APRO8':'Promo Abono 8','FAN_APRO5':'Promo Abono 5','FAN_APRO4':'Promo Abono 4','FAN_APRO3':'Promo Abono 3','FAN_APRO2':'Promo Abono 2','FAN_APRO0':'Promo Abono 0','FAN_APROC':'Promo Abono Control','FAN_APROT':'Promo Abono Total','FAN_APROQ':'Promo Abono Q',
+    'FAN_AFMT0':'Abono Fijo MT 0','FAN_AFON1':'Abono Fijo ON 1','FAN_AFMA2':'Abono Fijo MA 2','FAN_AFLIX':'Abono Fijo LIX','FAN_AFLI3':'Abono Fijo LI 3','FAN_AFON4':'Abono Fijo ON 4','FAN_AFCA4':'Abono Fijo CA 4','FAN_AFDT3':'Abono Fijo DT 3','FAN_AFNAC':'Abono Fijo NAC',
+    'FAN_PBAV3':'Plan Bav 3','FAN_PTIB5':'Plan TIB 5',
+  };
+  return moMap[id] || id;
+};
+
+// ─── Autocomplete Component ───────────────────────────────────────────────────
+
+interface IDAutocompleteProps {
+  ids: string[];
+  parseID: (id: string) => string;
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  accentColor?: string;
+  label?: string;
+}
+
+const IDAutocomplete: React.FC<IDAutocompleteProps> = ({ ids, parseID, value, onChange, placeholder = 'Escribi el ID...', accentColor = '#00ADEE', label }) => {
+  const [query, setQuery] = useState<string>('');
+  const [open, setOpen] = useState<boolean>(false);
+  const [highlighted, setHighlighted] = useState<number>(-1);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const displayText = value ? `${value}` : '';
+
+  const suggestions = React.useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return ids.slice(0, 12);
+    return ids.filter(id =>
+      id.toLowerCase().includes(q) || parseID(id).toLowerCase().includes(q)
+    ).slice(0, 12);
+  }, [query, ids, parseID]);
+
+  const select = (id: string) => {
+    onChange(id);
+    setQuery('');
+    setOpen(false);
+    setHighlighted(-1);
+  };
+
+  const clear = () => { onChange(''); setQuery(''); setOpen(false); };
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { setHighlighted(h => Math.min(h + 1, suggestions.length - 1)); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { setHighlighted(h => Math.max(h - 1, 0)); e.preventDefault(); }
+    else if (e.key === 'Enter' && highlighted >= 0) { select(suggestions[highlighted]); e.preventDefault(); }
+    else if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      {label && <label className="block text-xs text-gray-400 mb-1.5 uppercase tracking-wider">{label}</label>}
+      <div className="relative flex items-center">
+        {value && !open ? (
+          <div className="w-full flex items-center gap-2 px-4 py-3 bg-gray-800/60 border rounded-xl cursor-pointer transition-all hover:border-gray-500"
+            style={{ borderColor: `${accentColor}60` }}
+            onClick={() => { setOpen(true); setQuery(''); setTimeout(() => inputRef.current?.focus(), 0); }}>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-mono text-white truncate">{value}</p>
+              <p className="text-xs truncate mt-0.5" style={{ color: accentColor }}>{parseID(value)}</p>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); clear(); }}
+              className="text-gray-500 hover:text-red-400 flex-shrink-0 transition-colors">
+              <span className="text-lg leading-none">&times;</span>
+            </button>
+          </div>
+        ) : (
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true); setHighlighted(-1); }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            className="w-full px-4 py-3 bg-gray-800/60 border border-gray-600 rounded-xl text-white text-sm outline-none transition-all focus:border-opacity-100"
+            style={{ ['--tw-ring-color' as string]: accentColor }}
+          />
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+          {suggestions.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-gray-500">Sin resultados</div>
+          ) : (
+            <ul className="max-h-64 overflow-y-auto">
+              {suggestions.map((id, i) => (
+                <li key={id}
+                  onMouseDown={() => select(id)}
+                  onMouseEnter={() => setHighlighted(i)}
+                  className={`px-4 py-2.5 cursor-pointer transition-colors border-b border-gray-800/50 last:border-0 ${highlighted === i ? 'bg-gray-700/70' : 'hover:bg-gray-800/70'}`}>
+                  <p className="text-xs font-mono text-gray-200">{id}</p>
+                  <p className="text-xs mt-0.5" style={{ color: accentColor }}>{parseID(id)}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── IDs Tab ─────────────────────────────────────────────────────────────────
+
+const IDsTab: React.FC = () => {
+  const [modo, setModo] = useState<'hogar' | 'movil'>('hogar');
+  const [selectedID, setSelectedID] = useState<string>('');
+  const [precioLista, setPrecioLista] = useState<string>('');
+  const [dtoPct, setDtoPct] = useState<string>('');
+
+  const ids = modo === 'hogar' ? HOGAR_IDS : MOVIL_IDS;
+  const parseID = modo === 'hogar' ? parseHogarID : parseMovilID;
+  const accentColor = modo === 'hogar' ? '#00ADEE' : '#00C9B7';
+
+  const precio = parseFloat(precioLista) || 0;
+  const dto = parseFloat(dtoPct) || 0;
+  const precioFinal = precio * (1 - dto / 100);
+  const ahorro = precio - precioFinal;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex gap-2">
+        {(['hogar', 'movil'] as const).map(m => (
+          <button key={m} onClick={() => { setModo(m); setSelectedID(''); }}
+            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${modo === m ? 'bg-[#00ADEE] text-white' : 'bg-gray-700/50 text-gray-400 hover:text-white border border-gray-600'}`}>
+            {m === 'hogar' ? 'Hogar' : 'Movil'}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        <IDAutocomplete
+          ids={ids}
+          parseID={parseID}
+          value={selectedID}
+          onChange={setSelectedID}
+          placeholder="Escribi el ID o parte del nombre..."
+          accentColor={accentColor}
+          label="Buscar y seleccionar ID"
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Precio de Lista ($)</label>
+            <input type="number" value={precioLista} onChange={e => setPrecioLista(e.target.value)} placeholder="0"
+              className="w-full px-4 py-3 bg-gray-800/60 border border-gray-600 rounded-xl text-white text-sm focus:ring-2 focus:ring-[#00ADEE] outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Descuento (%)</label>
+            <input type="number" value={dtoPct} onChange={e => setDtoPct(e.target.value)} placeholder="0"
+              className="w-full px-4 py-3 bg-gray-800/60 border border-gray-600 rounded-xl text-white text-sm focus:ring-2 focus:ring-[#00ADEE] outline-none" />
+          </div>
+        </div>
+
+        {precio > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-4 bg-gray-800/50 rounded-xl text-center border border-gray-700">
+              <p className="text-xs text-gray-400 mb-1">Precio Lista</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(precio)}</p>
+            </div>
+            <div className="p-4 bg-red-500/10 rounded-xl text-center border border-red-500/30">
+              <p className="text-xs text-gray-400 mb-1">Descuento</p>
+              <p className="text-lg font-bold text-red-400">- {formatCurrency(ahorro)}</p>
+            </div>
+            <div className="p-4 rounded-xl text-center border" style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}40` }}>
+              <p className="text-xs text-gray-400 mb-1">Precio Final</p>
+              <p className="text-lg font-bold" style={{ color: accentColor }}>{formatCurrency(precioFinal)}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Contingencia Tab ─────────────────────────────────────────────────────────
+
+interface ContHogar {
+  idProducto: string;
+  ciclo: string;
+  dtoActual: string;
+  dtoFan: string;
+  precioBase: string;
+}
+
+interface ContLinea {
+  id: number;
+  idProducto: string;
+  ciclo: string;
+  dtoActual: string;
+  dtoFan: string;
+  precioBase: string;
+}
+
+interface Adicional {
+  activo: boolean;
+  precio: number;
+  dto: string;
+}
+
+const ADICIONALES_DEF = [
+  { key: 'disney_premium', label: 'Disney+ Premium', precio: 23999, notaNuevo: '' },
+  { key: 'disney_std', label: 'Disney+ Estandar', precio: 15599, notaNuevo: '' },
+  { key: 'futbol', label: 'Pack Futbol', precio: 26340, notaNuevo: '' },
+  { key: 'hbo', label: 'Pack HBO', precio: 24840, notaNuevo: '4 meses al 50% en usuarios nuevos' },
+  { key: 'universal', label: 'Pack Universal+', precio: 11499, notaNuevo: '3 meses sin cargo en usuarios nuevos' },
+  { key: 'atrevido', label: 'Pack Atrevido (Adultos)', precio: 27160, notaNuevo: '4 meses al 50% en usuarios nuevos' },
+];
+
+const ContingenciaTab: React.FC = () => {
+  const [hogar, setHogar] = useState<ContHogar>({ idProducto: '', ciclo: '7', dtoActual: '0', dtoFan: '0', precioBase: '' });
+  const [lineas, setLineas] = useState<ContLinea[]>([]);
+  const [adicionales, setAdicionales] = useState<Record<string, Adicional>>(() => {
+    const init: Record<string, Adicional> = {};
+    ADICIONALES_DEF.forEach(a => { init[a.key] = { activo: false, precio: a.precio, dto: '0' }; });
+    return init;
+  });
+  const [bocas, setBocas] = useState<string>('0');
+  const [decos, setDecos] = useState<string>('0');
+  const [decoIsNew, setDecoIsNew] = useState<boolean>(false);
+  const [extensores, setExtensores] = useState<string>('0');
+  const [extDto, setExtDto] = useState<string>('0');
+  const [decoDto, setDecoDto] = useState<string>('0');
+  const [daOption, setDaOption] = useState<'si' | 'no' | 'ya_tiene'>('no');
+  const [unificada, setUnificada] = useState<'si' | 'no' | 'ya'>('no');
+  const [ppay, setPpay] = useState<'si' | 'no'>('no');
+  const [ppayNivel, setPpayNivel] = useState<string>('1');
+  const [resultado, setResultado] = useState<{ totalMensual: number; speech: string } | null>(null);
+
+  const addLinea = () => setLineas([...lineas, { id: Date.now(), idProducto: '', ciclo: '7', dtoActual: '0', dtoFan: '0', precioBase: '' }]);
+  const removeLinea = (id: number) => setLineas(lineas.filter(l => l.id !== id));
+  const updateLinea = (id: number, field: keyof ContLinea, val: string) => setLineas(lineas.map(l => l.id === id ? { ...l, [field]: val } : l));
+
+  const calcPrecio = (base: string, dtoActual: string, dtoFan: string) => {
+    const b = parseFloat(base) || 0;
+    const da = parseFloat(dtoActual) || 0;
+    const df = parseFloat(dtoFan) || 0;
+    return Math.max(0, b - da - (b * df / 100));
+  };
+
+  const calcular = () => {
+    const decoUnitario = decoIsNew ? 7310 : 4100;
+    const decoCount = parseInt(decos) || 0;
+    const extCount = parseInt(extensores) || 0;
+
+    const precioHogar = calcPrecio(hogar.precioBase, hogar.dtoActual, hogar.dtoFan);
+    const precioLineas = lineas.reduce((acc, l) => acc + calcPrecio(l.precioBase, l.dtoActual, l.dtoFan), 0);
+    const precioDecos = decoCount * decoUnitario * (1 - (parseFloat(decoDto) || 0) / 100);
+    const precioExt = extCount * 3150 * (1 - (parseFloat(extDto) || 0) / 100);
+    const precioAdd = ADICIONALES_DEF.reduce((acc, a) => {
+      const st = adicionales[a.key];
+      return st?.activo ? acc + st.precio * (1 - (parseFloat(st.dto) || 0) / 100) : acc;
+    }, 0);
+
+    let totalMensual = precioHogar + precioLineas + precioDecos + precioExt + precioAdd;
+
+    const hasHogarActive = !!hogar.idProducto;
+    const hasMovilActive = lineas.length > 0;
+    const totalLineas = lineas.length;
+
+    let daDesc = 0;
+    const hasCombo = hasHogarActive; // simplification: all hogar treated as combo
+    if (daOption === 'si') {
+      if (hasCombo && hasMovilActive) daDesc = 6000;
+      else if (hasCombo) daDesc = 4000;
+      else if (hasMovilActive) daDesc = 2000;
+      daDesc += Math.max(0, totalLineas - 1) * 2000;
+      daDesc = Math.min(daDesc, 12000);
+    }
+
+    let convDesc = 0;
+    if ((unificada === 'si' || unificada === 'ya') && hasHogarActive && hasMovilActive) {
+      convDesc = 4000 + Math.max(0, totalLineas - 1) * 2000;
+      convDesc = Math.min(convDesc, 12000);
+    }
+
+    totalMensual = Math.max(0, totalMensual - daDesc - convDesc);
+
+    const hogarDesc = hogar.idProducto ? parseHogarID(hogar.idProducto) : 'No seleccionado';
+    const lineasDesc = lineas.map((l, i) => `Linea ${i + 1}: ${l.idProducto ? parseMovilID(l.idProducto) : 'Sin ID'} (Ciclo ${l.ciclo})`).join(', ');
+    const addDesc = ADICIONALES_DEF.filter(a => adicionales[a.key]?.activo).map(a => a.label).join(', ');
+
+    const speech = [
+      `Buenos días/tardes! Le comento el detalle de su servicio:`,
+      hogar.idProducto ? `• Servicio Hogar: ${hogarDesc} — Ciclo de facturación: ${hogar.ciclo}.` : '',
+      lineasDesc ? `• Movil: ${lineasDesc}.` : '',
+      addDesc ? `• Adicionales: ${addDesc}.` : '',
+      decoCount > 0 ? `• ${decoCount} Deco(s) adicional(es) incluidos.` : '',
+      daDesc > 0 ? `• Descuento por Debito Automatico: ${formatCurrency(daDesc)}/mes.` : '',
+      convDesc > 0 ? `• Descuento por Convergencia (Factura Unificada): ${formatCurrency(convDesc)}/mes.` : '',
+      `• Total mensual estimado: ${formatCurrency(totalMensual)}.`,
+      ppay === 'si' ? `• Con Personal Pay Nivel ${ppayNivel} accede a reintegros adicionales en su factura.` : '',
+      `Cualquier consulta estoy a disposicion.`,
+    ].filter(Boolean).join('\n');
+
+    setResultado({ totalMensual, speech });
+  };
+
+  const inputClass = 'w-full px-3 py-2.5 bg-gray-800/60 border border-gray-600 rounded-xl text-white text-sm focus:ring-2 focus:ring-[#00ADEE] outline-none';
+  const labelClass = 'block text-xs text-gray-400 mb-1.5 uppercase tracking-wider';
+
+  return (
+    <div className="space-y-6">
+      {/* HOGAR */}
+      <div className="p-5 bg-gray-800/30 rounded-2xl border border-gray-700/50 space-y-4">
+        <h3 className="text-sm font-semibold text-[#00ADEE] uppercase tracking-wider flex items-center gap-2">
+          <Home className="w-4 h-4" /> Hogar
+        </h3>
+        <IDAutocomplete
+          ids={HOGAR_IDS}
+          parseID={parseHogarID}
+          value={hogar.idProducto}
+          onChange={val => setHogar({ ...hogar, idProducto: val })}
+          placeholder="Escribi el ID Hogar..."
+          accentColor="#00ADEE"
+          label="ID de Producto Hogar"
+        />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className={labelClass}>Precio Base ($)</label>
+            <input type="number" value={hogar.precioBase} onChange={e => setHogar({ ...hogar, precioBase: e.target.value })} placeholder="0" className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Ciclo</label>
+            <select value={hogar.ciclo} onChange={e => setHogar({ ...hogar, ciclo: e.target.value })} className={inputClass}>
+              {['7','14','21','28'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Dto Actual ($)</label>
+            <input type="number" value={hogar.dtoActual} onChange={e => setHogar({ ...hogar, dtoActual: e.target.value })} placeholder="0" className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Dto FAN (%)</label>
+            <input type="number" value={hogar.dtoFan} onChange={e => setHogar({ ...hogar, dtoFan: e.target.value })} placeholder="0" className={inputClass} />
+          </div>
+        </div>
+
+        {/* Adicionales */}
+        <div className="space-y-3 pt-3 border-t border-gray-700/50">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Adicionales</p>
+          {ADICIONALES_DEF.map(a => {
+            const st = adicionales[a.key];
+            return (
+              <div key={a.key} className={`p-3 rounded-xl border transition-all ${st.activo ? 'border-[#00ADEE]/40 bg-[#00ADEE]/5' : 'border-gray-700/50'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="text-sm text-gray-300 font-medium cursor-pointer" onClick={() => setAdicionales({ ...adicionales, [a.key]: { ...st, activo: !st.activo } })}>
+                      {a.label}
+                    </label>
+                    {a.notaNuevo && <p className="text-xs text-amber-400 mt-0.5">{a.notaNuevo}</p>}
+                  </div>
+                  <button onClick={() => setAdicionales({ ...adicionales, [a.key]: { ...st, activo: !st.activo } })}
+                    className={`w-12 h-6 rounded-full transition-all relative ${st.activo ? 'bg-[#00ADEE]' : 'bg-gray-600'}`}>
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${st.activo ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+                {st.activo && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">Precio ($)</label>
+                      <input type="number" value={st.precio} onChange={e => setAdicionales({ ...adicionales, [a.key]: { ...st, precio: parseFloat(e.target.value) || 0 } })}
+                        className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-600 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#00ADEE] mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Descuento (%)</label>
+                      <input type="number" value={st.dto} onChange={e => setAdicionales({ ...adicionales, [a.key]: { ...st, dto: e.target.value } })}
+                        className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-600 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#00ADEE] mt-1" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Bocas, Decos, Extensores */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className={labelClass}>Bocas Adicionales</label>
+              <select value={bocas} onChange={e => setBocas(e.target.value)} className={inputClass}>
+                {['0','1','2'].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Decos (0-4)</label>
+              <div className="flex gap-2">
+                <select value={decos} onChange={e => setDecos(e.target.value)} className={inputClass}>
+                  {['0','1','2','3','4'].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              {parseInt(decos) > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                    <input type="checkbox" checked={decoIsNew} onChange={e => setDecoIsNew(e.target.checked)} className="accent-[#00ADEE]" />
+                    Usuario nuevo ($7.310 c/u)
+                  </label>
+                  <input type="number" value={decoDto} onChange={e => setDecoDto(e.target.value)} placeholder="Dto Deco %" className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-600 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#00ADEE]" />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className={labelClass}>Extensores (0-5)</label>
+              <select value={extensores} onChange={e => setExtensores(e.target.value)} className={inputClass}>
+                {['0','1','2','3','4','5'].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              {parseInt(extensores) > 0 && (
+                <input type="number" value={extDto} onChange={e => setExtDto(e.target.value)} placeholder="Dto Ext %" className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-600 rounded-lg text-white text-xs outline-none focus:ring-1 focus:ring-[#00ADEE] mt-2" />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* MOVIL */}
+      <div className="p-5 bg-gray-800/30 rounded-2xl border border-gray-700/50 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#00C9B7] uppercase tracking-wider flex items-center gap-2">
+            <Smartphone className="w-4 h-4" /> Movil
+          </h3>
+          <button onClick={addLinea} className="flex items-center gap-2 px-4 py-2 bg-[#00C9B7]/20 hover:bg-[#00C9B7]/30 text-[#00C9B7] text-sm font-semibold rounded-lg transition-all">
+            <Plus className="w-4 h-4" /> Agregar Linea
+          </button>
+        </div>
+        {lineas.length === 0 && (
+          <div className="text-center py-6 text-gray-500 text-sm border-2 border-dashed border-gray-700 rounded-xl">
+            Presioná + Agregar Linea para añadir
+          </div>
+        )}
+        {lineas.map((linea, idx) => (
+          <div key={linea.id} className="p-4 bg-gray-900/50 rounded-xl border border-gray-700 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-300">Linea {idx + 1}</span>
+              <button onClick={() => removeLinea(linea.id)} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+            </div>
+            <IDAutocomplete
+              ids={MOVIL_IDS}
+              parseID={parseMovilID}
+              value={linea.idProducto}
+              onChange={val => updateLinea(linea.id, 'idProducto', val)}
+              placeholder="Escribi el ID Movil..."
+              accentColor="#00C9B7"
+              label="ID Producto"
+            />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className={labelClass}>Precio Base ($)</label>
+                <input type="number" value={linea.precioBase} onChange={e => updateLinea(linea.id, 'precioBase', e.target.value)} placeholder="0" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Ciclo</label>
+                <select value={linea.ciclo} onChange={e => updateLinea(linea.id, 'ciclo', e.target.value)} className={inputClass}>
+                  {['7','14','21','28'].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Dto Actual ($)</label>
+                <input type="number" value={linea.dtoActual} onChange={e => updateLinea(linea.id, 'dtoActual', e.target.value)} placeholder="0" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Dto FAN (%)</label>
+                <input type="number" value={linea.dtoFan} onChange={e => updateLinea(linea.id, 'dtoFan', e.target.value)} placeholder="0" className={inputClass} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Opciones */}
+      <div className="p-5 bg-gray-800/30 rounded-2xl border border-gray-700/50 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Opciones</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className={labelClass}>Debito Automatico</label>
+            <select value={daOption} onChange={e => setDaOption(e.target.value as 'si' | 'no' | 'ya_tiene')} className={inputClass}>
+              <option value="no">No acepta</option>
+              <option value="si">Si acepta (nuevo)</option>
+              <option value="ya_tiene">Ya tiene (mas de 6 meses)</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Factura Unificada</label>
+            <select value={unificada} onChange={e => setUnificada(e.target.value as 'si' | 'no' | 'ya')} className={inputClass}>
+              <option value="no">No acepta</option>
+              <option value="si">Si acepta (nueva)</option>
+              <option value="ya">Ya esta unificado</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Personal Pay</label>
+            <select value={ppay} onChange={e => setPpay(e.target.value as 'si' | 'no')} className={inputClass}>
+              <option value="no">No</option>
+              <option value="si">Si</option>
+            </select>
+            {ppay === 'si' && (
+              <select value={ppayNivel} onChange={e => setPpayNivel(e.target.value)} className={`${inputClass} mt-2`}>
+                {['1','2','3','4'].map(n => <option key={n} value={n}>Nivel {n}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <button onClick={calcular}
+        className="w-full py-4 bg-[#00C9B7] hover:bg-[#00B5A5] text-gray-900 font-bold text-base rounded-2xl transition-all shadow-lg shadow-[#00C9B7]/20">
+        Ver Total a Pagar
+      </button>
+
+      {resultado && (
+        <div className="space-y-4">
+          <div className="p-6 bg-[#00C9B7]/10 border border-[#00C9B7]/30 rounded-2xl text-center">
+            <p className="text-sm text-gray-400 mb-2">Total Mensual Estimado</p>
+            <p className="text-4xl font-bold text-[#00C9B7]">{formatCurrency(resultado.totalMensual)}</p>
+          </div>
+          <div className="p-5 bg-gray-800/50 rounded-2xl border border-gray-700/50">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-[#00ADEE]" /> Speech sugerido para el cliente
+              </p>
+              <CopyButton text={resultado.speech} />
+            </div>
+            <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">{resultado.speech}</pre>
+          </div>
         </div>
       )}
     </div>
@@ -1564,8 +2244,9 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ title, icon, isExpanded, onTogg
 };
 
 // Main App
+type TabId = 'calculadoras' | 'beneficios' | 'ids' | 'contingencia';
 function App() {
-  const [activeTab, setActiveTab] = useState<'calculadoras' | 'beneficios'>('calculadoras');
+  const [activeTab, setActiveTab] = useState<TabId>('calculadoras');
   const [expandedModule, setExpandedModule] = useState<string | null>('a');
   const toggleModule = (module: string) => setExpandedModule(expandedModule === module ? null : module);
 
@@ -1584,13 +2265,15 @@ function App() {
               <span className="font-sans text-xl md:text-2xl font-bold"><span className="text-[#00C9B7]">Personal</span> <span className="text-[#00ADEE]">Flow</span></span>
             </div>
             {/* Tabs */}
-            <div className="flex space-x-1">
-              {[
+            <div className="flex space-x-1 flex-wrap gap-y-1">
+              {([
                 { id: 'calculadoras', label: 'Calculadoras', icon: <Calculator className="w-4 h-4" /> },
                 { id: 'beneficios', label: 'Beneficios', icon: <Star className="w-4 h-4" /> },
-              ].map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as 'calculadoras' | 'beneficios')}
-                  className={`flex items-center space-x-2 px-5 py-2.5 text-sm font-medium rounded-t-xl transition-all ${activeTab === tab.id ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}>
+                { id: 'ids', label: 'IDs', icon: <FileText className="w-4 h-4" /> },
+                { id: 'contingencia', label: 'Contingencia', icon: <AlertTriangle className="w-4 h-4" /> },
+              ] as { id: TabId; label: string; icon: React.ReactNode }[]).map((tab) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-t-xl transition-all ${activeTab === tab.id ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}>
                   {tab.icon}<span>{tab.label}</span>
                 </button>
               ))}
@@ -1650,6 +2333,36 @@ function App() {
                 </div>
               </div>
               <BeneficiosTab />
+            </div>
+          )}
+
+          {activeTab === 'ids' && (
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-[#00ADEE]/20 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-[#00ADEE]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Consultor de IDs</h2>
+                  <p className="text-sm text-gray-400">Buscá, decodificá y calculá precios por ID de producto</p>
+                </div>
+              </div>
+              <IDsTab />
+            </div>
+          )}
+
+          {activeTab === 'contingencia' && (
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700/50 p-6">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Calculadora de Contingencia</h2>
+                  <p className="text-sm text-gray-400">Para usar cuando se caiga la app de ventas/retencion</p>
+                </div>
+              </div>
+              <ContingenciaTab />
             </div>
           )}
         </main>
